@@ -1,0 +1,61 @@
+import { DocumentApprovalDefinition } from '../../common/base/document-approval.base';
+import { FormatHelper } from '../../common/helpers/format.helper';
+
+/**
+ * Migrasi dari app/Http/Controllers/CmEntryController.php
+ */
+export const CM_ENTRY: DocumentApprovalDefinition = {
+  key: 'cmentry',
+  text: 'Contract Entry',
+  label: 'Contract Entry',
+  type: 'E',
+  typeModule: 'CM',
+  cacheDir: 'send_cmentry',
+  mailView: 'email.cmentry.send',
+  passCheckView: 'email/cmentry/passcheckwithremark',
+  procedure: 'mgr.xrl_send_mail_approval_cm_contract_entry',
+  procedureParams: (p, status, reason) => [p.entity_cd, p.project_no, p.doc_no, p.ref_no, status, p.level_no, p.usergroup, p.user_id, p.supervisor, reason, 'w_cm_subcontract_no'],
+  logLabel: 'Email CM Entry',
+  buildData: (body) => ({
+    sender: body.sender,
+    sender_addr: body.sender_addr,
+    entity_name: body.entity_name,
+    descs: body.descs,
+    doc_link: body.doc_link,
+    works_descs: body.works_descs,
+    user_name: body.user_name,
+    approve_seq: body.approve_seq,
+    module: body.module,
+    contract_no: body.contract_no,
+    contract_amt: FormatHelper.numberFormat(body.contract_amt, 2),
+    auth_vo: FormatHelper.numberFormat(body.auth_vo, 2),
+    curr_cd: body.curr_cd,
+    approve_list: FormatHelper.explode('; ', body.approve_exist),
+    url_file: FormatHelper.explode(',', body.url_file),
+    file_name: FormatHelper.explode(',', body.file_name),
+    attachmentsAdd: FormatHelper.pairAttachments(
+      FormatHelper.cleanList(body.add_attch_link),
+      FormatHelper.cleanList(body.add_attch_name),
+      ['urlAdd', 'file_nameAdd'],
+    ),
+    clarify_user: body.clarify_user,
+    clarify_email: body.clarify_email,
+    body: `Please approve Contract Entry No. ${body.doc_no} for ${body.descs}`,
+    subject: `Need Approval for Contract Entry No.  ${body.doc_no}`,
+  }),
+  buildEncrypted: (body) => ({
+    entity_cd: body.entity_cd,
+    project_no: body.project_no,
+    email_address: body.email_addr,
+    entity_name: body.entity_name,
+    level_no: body.level_no,
+    doc_no: body.doc_no,
+    ref_no: body.ref_no,
+    usergroup: body.usergroup,
+    user_id: body.user_id,
+    supervisor: body.supervisor,
+    type: 'E',
+    type_module: 'CM',
+    text: 'Contract Entry',
+  }),
+};
