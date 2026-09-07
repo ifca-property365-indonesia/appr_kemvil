@@ -9,7 +9,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><%= appName %> - Approval BEFA</title>
-    <link rel="shortcut icon" type="image/x-icon" href="<%= url('public/images/befa_header.ico') %>">
+    <!--
+      Tautan ke alamat aplikasi sendiri ditulis relatif terhadap root ("/...").
+      Browser menyelesaikannya memakai alamat halaman yang sedang dibuka, jadi
+      skema, host dan port selalu ikut apa adanya tanpa bergantung pada header
+      X-Forwarded-* dari proxy.
+    -->
+    <link rel="shortcut icon" type="image/x-icon" href="/public/images/befa_header.ico">
     <style>
         body {
             margin: 0;
@@ -40,7 +46,7 @@
             <p><b>Halaman &amp; endpoint utama:</b></p>
             <ul>
                 <li>
-                    <a href="<%= baseUrl %>/appr-list">Approval List</a> - <code>/appr-list</code>
+                    <a href="/appr-list">Approval List</a> - <code>/appr-list</code>
                 </li>
                 <li><code>GET /api/connect</code> - cek koneksi database</li>
                 <li><code>GET /api/info</code> - informasi runtime &amp; konfigurasi</li>
