@@ -39,7 +39,9 @@
 
             <p><b>Halaman &amp; endpoint utama:</b></p>
             <ul>
-                <li><a href="<%= url('appr-list') %>">Approval List</a> - <code>/appr-list</code></li>
+                <li>
+                    <a href="<%= baseUrl %>/appr-list">Approval List</a> - <code>/appr-list</code>
+                </li>
                 <li><code>GET /api/connect</code> - cek koneksi database</li>
                 <li><code>GET /api/info</code> - informasi runtime &amp; konfigurasi</li>
                 <li><code>POST /api/maildata</code> - kirim email approval (module dinamis)</li>
