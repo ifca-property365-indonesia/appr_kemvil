@@ -1,5 +1,6 @@
-import { Controller, Get, Header, Query, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Header, Query, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
+import { requestBaseUrl } from '../../common/http/base-url.util';
 import { ViewService } from '../../common/view/view.service';
 import { SystemService } from './system.service';
 
@@ -23,8 +24,10 @@ export class SystemController {
 
   @Get()
   @Header('Content-Type', 'text/html; charset=utf-8')
-  welcome() {
-    return this.view.render('welcome');
+  welcome(@Req() request: Request) {
+    // Base URL & seluruh tautan mengikuti alamat yang dipakai pengunjung,
+    // bukan APP_URL, supaya halaman ini benar di IP/domain/port mana pun.
+    return this.view.render('welcome', {}, { baseUrl: requestBaseUrl(request) });
   }
 
   @Get('check-imap')

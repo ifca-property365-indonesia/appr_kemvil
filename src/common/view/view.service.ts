@@ -5,6 +5,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { blade } from '../helpers/blade.helper';
 
+export interface RenderOptions {
+  /** Base URL untuk render ini (biasanya origin request). Default: APP_URL. */
+  baseUrl?: string;
+}
+
 /**
  * Padanan `view('email.cmentry.send', $data)` milik Laravel.
  *
@@ -25,14 +30,20 @@ export class ViewService {
     return path.join(this.viewsDir, `${relative}.ejs`);
   }
 
-  render(view: string, data: Record<string, any> = {}): string {
+  /**
+   * `options.baseUrl` menggantikan APP_URL untuk render ini saja, sehingga
+   * `url()`, `route()` dan `config('app.url')` mengikuti alamat yang sedang
+   * dipakai pengunjung. Dipakai halaman web; email tetap memakai APP_URL
+   * karena penerimanya membuka tautan di luar konteks request.
+   */
+  render(view: string, data: Record<string, any> = {}, options: RenderOptions = {}): string {
     const file = this.resolve(view);
     if (!fs.existsSync(file)) {
       throw new Error(`View [${view}] not found: ${file}`);
     }
 
     const compiled = this.compile(file);
-    return compiled(lenientLocals({ ...this.globals(), ...data }));
+    return compiled(lenientLocals({ ...this.globals(options.baseUrl), ...data }));
   }
 
   private compile(file: string): ejs.TemplateFunction {
@@ -53,12 +64,15 @@ export class ViewService {
   }
 
   /** Helper global yang tersedia di setiap template (pengganti fungsi PHP/Blade). */
-  private globals(): Record<string, any> {
-    const appUrl = (this.config.get<string>('app.url') ?? '').replace(/\/+$/, '');
-    return blade({
-      appUrl,
-      appName: this.config.get<string>('app.name'),
-    });
+  private globals(baseUrl?: string): Record<string, any> {
+    const configured = (this.config.get<string>('app.url') ?? '').replace(/\/+$/, '');
+    const appUrl = (baseUrl ?? '').replace(/\/+$/, '') || configured;
+
+    return {
+      ...blade({ appUrl, appName: this.config.get<string>('app.name') }),
+      // Alamat yang sedang dipakai pengunjung; tersedia langsung di template.
+      baseUrl: appUrl,
+    };
   }
 }
 
