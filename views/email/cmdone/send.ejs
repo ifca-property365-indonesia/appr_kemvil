@@ -88,7 +88,7 @@
                                         <% if (url_file !== '' && dataArray['file_name'][key] !== '' && url_file !== 'EMPTY' && dataArray['file_name'][key] !== 'EMPTY') { %>
                                             <% if (!hasAttachment) { %>
                                                 <% hasAttachment = true; %>
-                                                <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 16px;">
+                                                <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 14px;">
                                                     <span>To view a detailed product list, description, and estimate price per item, please click on the link below :</span><br>
                                             <% } %>
                                             <a href="<%= url_file %>" target="_blank"><%= dataArray['file_name'][key] %></a><br>
@@ -101,7 +101,7 @@
 
                                     
                                     <% if (!empty(dataArray['attachmentsAdd']) && count(dataArray['attachmentsAdd']) > 0) { %>
-                                        <p style="text-align:left; margin-bottom:15px; color:#000000; font-size:14px;">
+                                        <br><p style="text-align:left; margin-bottom:15px; color:#000000; font-size:14px;">
                                             <span>
                                                 This request to purchase comes with additional supporting documents, such as detailed specifications, that you can access from the link below :
                                             </span>
@@ -142,7 +142,7 @@ counter = 0; %>
                                         <% if (approve_list !== '' && approve_list !== 'EMPTY') { %>
                                             <% if (!hasApproval) { %>
                                                 <% hasApproval = true; %>
-                                                <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 16px;">
+                                                <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 14px;">
                                                     <span>This request approval has been approved by :</span><br>
                                             <% } %>
                                             <%= ++counter %>. <%= approve_list %><br>
