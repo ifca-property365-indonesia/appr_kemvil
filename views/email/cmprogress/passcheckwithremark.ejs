@@ -47,7 +47,7 @@
                                 <td style="text-align:center;padding: 50px 30px;">
                                     <img style="width:88px; margin-bottom:24px;" src="<%= url('public/images/double_approve.png') %>" alt="Verified">
                                     <p>Do you want to <%= valuebt %> this request ?</p>
-                                    <form id="frmEditor" class="form-horizontal" method="POST" action="<%= url('/api/cmprogress/getaccess') %>" enctype="multipart/form-data">
+                                    <form id="frmEditor" class="form-horizontal" method="POST" action="<%= url('/api/cmprogress/getaccess') %>">
                                     
                                     <input type="text" id="status" name="status" value="<%= status %>" hidden>
                                     <input type="text" id="encrypt" name="encrypt" value="<%= encrypt %>" hidden>
