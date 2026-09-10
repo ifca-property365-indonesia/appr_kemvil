@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MailCacheService } from '../cache/mail-cache.service';
 import { TokenService } from '../crypto/token.service';
 import { AppLoggerService } from '../logger/app-logger.service';
+import { logModuleFromClass, runWithLogModule } from '../logger/log-context';
 import { ApprovalMailService } from '../mail/approval-mail.service';
 import { ApprovalFlowService } from '../services/approval-flow.service';
 import { FormatHelper } from '../helpers/format.helper';
@@ -66,6 +67,10 @@ export abstract class LandApprovalBaseService {
 
   /** Padanan `index(Request $request)`. */
   async index(body: Record<string, any>): Promise<LandCallback> {
+    return runWithLogModule(logModuleFromClass(this), () => this.indexInner(body));
+  }
+
+  private async indexInner(body: Record<string, any>): Promise<LandCallback> {
     const def = this.definition;
 
     const callback: LandCallback = { data: null, Error: false, Pesan: '', Status: 200 };
@@ -167,6 +172,10 @@ export abstract class LandApprovalBaseService {
 
   /** Padanan `processData($status, $encrypt)`. */
   async processData(status: string, encrypt: string): Promise<string> {
+    return runWithLogModule(logModuleFromClass(this), () => this.processDataInner(status, encrypt));
+  }
+
+  private async processDataInner(status: string, encrypt: string): Promise<string> {
     const def = this.definition;
 
     try {
@@ -191,6 +200,10 @@ export abstract class LandApprovalBaseService {
 
   /** Padanan `getaccess(Request $request)`. */
   async getaccess(body: Record<string, any>): Promise<string> {
+    return runWithLogModule(logModuleFromClass(this), () => this.getaccessInner(body));
+  }
+
+  private async getaccessInner(body: Record<string, any>): Promise<string> {
     const def = this.definition;
 
     try {

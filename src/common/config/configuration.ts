@@ -68,6 +68,8 @@ export interface AppConfig {
     http: boolean;
     /** Tangkap return code stored procedure untuk log audit. */
     procReturnCode: boolean;
+    /** Umur simpan folder log harian (hari). */
+    retentionDays: number;
   };
   token: {
     mode: 'db' | 'inline';
@@ -130,6 +132,7 @@ export default (): AppConfig => ({
     level: str(process.env.LOG_LEVEL, 'debug'),
     http: bool(process.env.LOG_HTTP, true),
     procReturnCode: bool(process.env.DB_PROC_RETURN_CODE, true),
+    retentionDays: num(process.env.LOG_RETENTION_DAYS, 30),
   },
   token: {
     mode: (str(process.env.URL_TOKEN_MODE, 'db') === 'inline' ? 'inline' : 'db') as 'db' | 'inline',

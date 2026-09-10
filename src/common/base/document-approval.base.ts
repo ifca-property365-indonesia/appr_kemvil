@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { TokenService } from '../crypto/token.service';
 import { DatabaseService } from '../database/database.service';
 import { AppLoggerService } from '../logger/app-logger.service';
+import { logModuleFromClass, runWithLogModule } from '../logger/log-context';
 import { ApprovalMailService } from '../mail/approval-mail.service';
 import { ApprovalFlowService } from '../services/approval-flow.service';
 
@@ -60,6 +61,10 @@ export abstract class DocumentApprovalBaseService {
 
   /** Padanan `Mail(Request $request)` / `processModule($data)`. */
   async send(body: Record<string, any>): Promise<string> {
+    return runWithLogModule(logModuleFromClass(this), () => this.sendInner(body));
+  }
+
+  private async sendInner(body: Record<string, any>): Promise<string> {
     const def = this.definition;
 
     const dataArray = def.buildData(body);
@@ -95,6 +100,10 @@ export abstract class DocumentApprovalBaseService {
 
   /** Padanan `processData($status, $encrypt)`. */
   async processData(status: string, encrypt: string): Promise<string> {
+    return runWithLogModule(logModuleFromClass(this), () => this.processDataInner(status, encrypt));
+  }
+
+  private async processDataInner(status: string, encrypt: string): Promise<string> {
     const def = this.definition;
 
     try {
@@ -123,6 +132,10 @@ export abstract class DocumentApprovalBaseService {
 
   /** Padanan `update($status, $encrypt, $reason)` (dipanggil MailDataController). */
   async updateWith(status: string, encrypt: string, reason: any): Promise<string> {
+    return runWithLogModule(logModuleFromClass(this), () => this.updateWithInner(status, encrypt, reason));
+  }
+
+  private async updateWithInner(status: string, encrypt: string, reason: any): Promise<string> {
     const def = this.definition;
 
     try {

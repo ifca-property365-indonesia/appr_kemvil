@@ -20,9 +20,11 @@ async function bootstrap(): Promise<void> {
   // Semua exception yang lolos dari service tetap tercatat di storage/logs.
   app.useGlobalFilters(new AllExceptionsFilter(logger));
 
-  if (config.get<boolean>('log.http') ?? true) {
-    app.useGlobalInterceptors(new HttpLoggingInterceptor(logger));
-  }
+  // Selalu dipasang: interceptor ini juga menetapkan nama module untuk log.
+  // LOG_HTTP hanya menentukan apakah jejak akses ikut ditulis.
+  app.useGlobalInterceptors(
+    new HttpLoggingInterceptor(logger, config.get<boolean>('log.http') ?? true),
+  );
 
   process.on('uncaughtException', (err) => {
     logger.channel('daily').error(`uncaughtException: ${err?.message ?? err}`, {

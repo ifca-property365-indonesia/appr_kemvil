@@ -1,33 +1,62 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
+import { currentLogModule } from './log-context';
 
 /**
  * Padanan `Log::channel('nama')->info(...)` milik Laravel.
  *
- * Channel yang dipakai project lama:
- *   - daily (default)      - sendmail
- *   - sendmailapproval     - sendmailfeedback
- *   - resend               - resend_apprlist
+ * Tata letak file:
+ *   storage/logs/<channel>-YYYY-MM-DD/<module>.log
  *
- * Setiap channel ditulis ke storage/logs/<channel>-YYYY-MM-DD.log
+ * contoh: storage/logs/approval-2026-09-10/land_verification.log
+ *         storage/logs/daily-2026-09-10/cb_ppu.log
+ *
+ * Nama module diambil dari AsyncLocalStorage (lihat `log-context.ts`) sehingga
+ * setiap pemanggilan log otomatis masuk ke berkas module yang sesuai.
+ *
+ * Channel pada `FLAT_CHANNELS` dikecualikan dan tetap satu berkas per hari,
+ * karena isinya lintas module.
  */
+const FLAT_CHANNELS = new Set(['request']);
+
+/** Pola direktori log harian, dipakai saat membersihkan log lama. */
+const DATED_DIR = /^(.+)-(\d{4}-\d{2}-\d{2})$/;
+
 @Injectable()
-export class AppLoggerService implements OnModuleDestroy {
-  private readonly loggers = new Map<string, winston.Logger>();
+export class AppLoggerService implements OnModuleInit, OnModuleDestroy {
+  private readonly loggers = new Map<string, { logger: winston.Logger; date: string }>();
   private readonly level: string;
   private readonly logDir: string;
+  private readonly retentionDays: number;
+  private pruneTimer?: NodeJS.Timeout;
 
   constructor(config: ConfigService) {
     this.level = config.get<string>('log.level') ?? 'debug';
+    this.retentionDays = config.get<number>('log.retentionDays') ?? 30;
     this.logDir = path.join(process.cwd(), 'storage', 'logs');
   }
 
+  onModuleInit(): void {
+    this.prune();
+    // Bersihkan sekali sehari; transport File tidak punya rotasi bawaan.
+    this.pruneTimer = setInterval(() => this.prune(), 24 * 60 * 60 * 1000);
+    this.pruneTimer.unref?.();
+  }
+
   channel(name = 'daily'): winston.Logger {
-    const existing = this.loggers.get(name);
-    if (existing) return existing;
+    const flat = FLAT_CHANNELS.has(name);
+    const module = flat ? '' : currentLogModule();
+    const date = today();
+    const key = flat ? name : `${name}/${module}`;
+
+    const cached = this.loggers.get(key);
+    // Saat berganti hari, logger lama ditutup supaya menulis ke folder baru.
+    if (cached && cached.date === date) return cached.logger;
+    if (cached) cached.logger.close();
 
     const logger = winston.createLogger({
       level: this.level,
@@ -35,26 +64,37 @@ export class AppLoggerService implements OnModuleDestroy {
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         winston.format.printf(({ timestamp, level, message, ...meta }) => {
           const extra = Object.keys(meta).length ? ` ${safeStringify(meta)}` : '';
-          return `[${timestamp}] ${name}.${level.toUpperCase()}: ${message}${extra}`;
+          const label = flat ? name : `${name}.${module}`;
+          return `[${timestamp}] ${label}.${level.toUpperCase()}: ${message}${extra}`;
         }),
       ),
-      transports: [
-        new winston.transports.DailyRotateFile({
-          dirname: this.logDir,
-          filename: `${name}-%DATE%.log`,
-          datePattern: 'YYYY-MM-DD',
-          maxFiles: '30d',
-          zippedArchive: false,
-        }),
-      ],
+      transports: [flat ? this.flatTransport(name) : this.moduleTransport(name, module, date)],
     });
 
     if ((process.env.APP_ENV ?? 'production') !== 'production') {
       logger.add(new winston.transports.Console({ format: winston.format.simple() }));
     }
 
-    this.loggers.set(name, logger);
+    this.loggers.set(key, { logger, date });
     return logger;
+  }
+
+  /** `storage/logs/<channel>-YYYY-MM-DD.log` - satu berkas lintas module. */
+  private flatTransport(name: string): winston.transport {
+    return new winston.transports.DailyRotateFile({
+      dirname: this.logDir,
+      filename: `${name}-%DATE%.log`,
+      datePattern: 'YYYY-MM-DD',
+      maxFiles: `${this.retentionDays}d`,
+      zippedArchive: false,
+    });
+  }
+
+  /** `storage/logs/<channel>-YYYY-MM-DD/<module>.log` */
+  private moduleTransport(name: string, module: string, date: string): winston.transport {
+    const dirname = path.join(this.logDir, `${name}-${date}`);
+    fs.mkdirSync(dirname, { recursive: true });
+    return new winston.transports.File({ dirname, filename: `${module}.log` });
   }
 
   /** Alias `Log::info()` (channel default). */
@@ -70,10 +110,45 @@ export class AppLoggerService implements OnModuleDestroy {
     this.channel('daily').error(message, meta);
   }
 
+  /** Hapus folder log harian yang lebih tua dari `log.retentionDays`. */
+  prune(): void {
+    if (this.retentionDays <= 0) return;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(this.logDir, { withFileTypes: true });
+    } catch {
+      return; // folder log belum ada
+    }
+
+    const batas = Date.now() - this.retentionDays * 86400000;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const match = DATED_DIR.exec(entry.name);
+      if (!match) continue;
+
+      const waktu = Date.parse(`${match[2]}T00:00:00`);
+      if (!Number.isFinite(waktu) || waktu >= batas) continue;
+
+      try {
+        fs.rmSync(path.join(this.logDir, entry.name), { recursive: true, force: true });
+      } catch {
+        /* diabaikan - akan dicoba lagi besok */
+      }
+    }
+  }
+
   onModuleDestroy(): void {
-    this.loggers.forEach((logger) => logger.close());
+    if (this.pruneTimer) clearInterval(this.pruneTimer);
+    this.loggers.forEach(({ logger }) => logger.close());
     this.loggers.clear();
   }
+}
+
+function today(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function safeStringify(value: unknown): string {
