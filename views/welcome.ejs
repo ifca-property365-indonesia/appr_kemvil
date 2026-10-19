@@ -45,13 +45,11 @@
 
             <p><b>Halaman &amp; endpoint utama:</b></p>
             <ul>
-                <li>
-                    <a href="/appr-list">Approval List</a> - <code>/appr-list</code>
-                </li>
                 <li><code>GET /api/connect</code> - cek koneksi database</li>
                 <li><code>GET /api/info</code> - informasi runtime &amp; konfigurasi</li>
-                <li><code>POST /api/maildata</code> - kirim email approval (module dinamis)</li>
-                <li><code>GET /api/processdata/{module}/{status}/{token}</code> - halaman konfirmasi</li>
+                <li><code>POST /api/maildata</code> - kirim email approval Purchase Requisition (dipanggil SP)</li>
+                <li><code>GET /api/porequest/{A|M|R}/{token}</code> - halaman konfirmasi</li>
+                <li><code>POST /api/porequest/getaccess</code> - eksekusi approval</li>
             </ul>
 
             <p class="muted">Base URL: <code><%= baseUrl %></code></p>

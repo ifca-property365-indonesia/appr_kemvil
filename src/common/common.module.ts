@@ -6,7 +6,6 @@ import { AppLoggerService } from './logger/app-logger.service';
 import { ApprovalMailService } from './mail/approval-mail.service';
 import { MailService } from './mail/mail.service';
 import { SmtpConfigService } from './mail/smtp-config.service';
-import { ApprovalFlowService } from './services/approval-flow.service';
 import { ViewService } from './view/view.service';
 
 /**
@@ -24,7 +23,6 @@ import { ViewService } from './view/view.service';
     MailCacheService,
     ApprovalMailService,
     TokenService,
-    ApprovalFlowService,
   ],
   exports: [
     AppLoggerService,
@@ -35,7 +33,6 @@ import { ViewService } from './view/view.service';
     MailCacheService,
     ApprovalMailService,
     TokenService,
-    ApprovalFlowService,
   ],
 })
 export class CommonModule {}

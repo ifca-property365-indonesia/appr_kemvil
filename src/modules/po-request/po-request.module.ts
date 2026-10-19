@@ -5,6 +5,5 @@ import { PoRequestService } from './po-request.service';
 @Module({
   controllers: [PoRequestController],
   providers: [PoRequestService],
-  exports: [PoRequestService],
 })
 export class PoRequestModule {}
