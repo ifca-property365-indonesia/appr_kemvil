@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as path from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -48,6 +49,19 @@ async function bootstrap(): Promise<void> {
   app.useStaticAssets(path.join(process.cwd(), 'assets'), { prefix: '/assets' });
 
   app.enableCors({ origin: true, credentials: true });
+
+  // SWAGGER_HOST=1 -> dokumentasi API di /docs, dan halaman root (/) diarahkan ke sana.
+  if (config.get<boolean>('app.swagger')) {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder()
+        .setTitle('Approval KEMVIL')
+        .setDescription('Layanan pengiriman dan pemrosesan email approval Purchase Requisition.')
+        .setVersion('1.0')
+        .build(),
+    );
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const port = config.get<number>('app.port') ?? 3000;
   await app.listen(port, '0.0.0.0');

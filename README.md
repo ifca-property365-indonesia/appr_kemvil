@@ -109,7 +109,8 @@ ROLLBACK
 | POST | `/api/maildata` | terima body JSON dari SP, kirim email. Balasan teks `Email berhasil dikirim ke: …` / `Email has already been sent to: …` dibaca SP sebagai sukses |
 | GET | `/api/porequest/{A\|M\|R}/{token}` | halaman konfirmasi dari link email |
 | POST | `/api/porequest/getaccess` | jalankan SP dengan keputusan approver |
-| GET | `/` | halaman ringkas |
+| GET | `/` | `SWAGGER_HOST=1`: redirect ke Swagger UI; `0`: halaman ringkas |
+| GET | `/docs`, `/docs-json` | Swagger UI & spesifikasi OpenAPI (hanya bila `SWAGGER_HOST=1`) |
 | GET | `/api/connect`, `/api/dbcheck` | cek koneksi database |
 | GET | `/api/info`, `/api/env` | info runtime & konfigurasi non-rahasia |
 
@@ -129,6 +130,7 @@ Lihat `.env.example`. Yang penting:
 | --- | --- |
 | `APP_URL` | URL publik aplikasi; dipakai membangun link di email. **Wajib** diisi sebelum produksi |
 | `APP_KEY` | kunci token mode `inline` (`npm run key:generate`) |
+| `SWAGGER_HOST` | `1` = aktifkan Swagger UI di `/docs` (root `/` diarahkan ke sana); `0` = mati (default) |
 | `DB_HOST2`, `DB_PORT2`, `DB_DATABASE2`, `DB_USERNAME2`, `DB_PASSWORD2` | koneksi SQL Server |
 | `MAIL_*` | SMTP pengirim email |
 | `MAIL_USE_DB_SMTP` | `true` untuk memakai SMTP per entity dari `mgr.smtp_configuration` |
