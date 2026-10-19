@@ -1,4 +1,6 @@
 import { Controller, Get, Header, Query, Req, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { requestBaseUrl } from '../../common/http/base-url.util';
 import { ViewService } from '../../common/view/view.service';
@@ -15,19 +17,28 @@ import { SystemService } from './system.service';
  *   GET /api/select            -> SelController::index()
  *   GET /api/encrypt           -> EncryptController::index() (memang kosong)
  */
+@ApiTags('System')
 @Controller()
 export class SystemController {
   constructor(
     private readonly service: SystemService,
     private readonly view: ViewService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get()
-  @Header('Content-Type', 'text/html; charset=utf-8')
-  welcome(@Req() request: Request) {
-    // Base URL & seluruh tautan mengikuti alamat yang dipakai pengunjung,
-    // bukan APP_URL, supaya halaman ini benar di IP/domain/port mana pun.
-    return this.view.render('welcome', {}, { baseUrl: requestBaseUrl(request) });
+  @ApiExcludeEndpoint()
+  welcome(@Req() request: Request, @Res() res: Response) {
+    // SWAGGER_HOST=1 -> Swagger UI. Relatif supaya tetap benar di belakang proxy/sub-path.
+    if (this.config.get<boolean>('app.swagger')) {
+      return res.redirect('docs');
+    }
+
+    // Base URL mengikuti alamat yang dipakai pengunjung, bukan APP_URL,
+    // supaya halaman ini benar di IP/domain/port mana pun.
+    res
+      .type('text/html; charset=utf-8')
+      .send(this.view.render('welcome', {}, { baseUrl: requestBaseUrl(request) }));
   }
 
   @Get('check-imap')

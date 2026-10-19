@@ -37,6 +37,8 @@ export interface AppConfig {
     url: string;
     port: number;
     timezone: string;
+    /** SWAGGER_HOST=1 -> halaman root (/) diarahkan ke Swagger UI (/docs). */
+    swagger: boolean;
   };
   database: {
     befa: {
@@ -97,6 +99,7 @@ export default (): AppConfig => ({
     url: str(process.env.APP_URL, 'http://localhost:3000').replace(/\/+$/, ''),
     port: num(process.env.APP_PORT, 3000),
     timezone: str(process.env.APP_TIMEZONE, 'Asia/Jakarta'),
+    swagger: bool(process.env.SWAGGER_HOST, false),
   },
   database: {
     befa: {
