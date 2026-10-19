@@ -138,12 +138,6 @@ export class PoRequestService {
       return `Status feedback tidak dikenal: ${body.status}`;
     }
 
-    const subjects: Record<string, string> = {
-      A: `${LABEL} No. ${docNo} has been Approved`,
-      M: `${LABEL} No. ${docNo} needs Revision`,
-      R: `${LABEL} No. ${docNo} has been Rejected`,
-    };
-
     const dataArray = {
       status,
       status_text: option.done,
@@ -156,7 +150,7 @@ export class PoRequestService {
       sender: text(body.sender),
       sender_addr: text(body.sender_addr),
       approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
-      subject: subjects[status],
+      subject: `(${option.done}) ${LABEL} No. ${docNo}`,
     };
 
     try {
