@@ -56,6 +56,8 @@ DECLARE @ole_src			varchar(255)
 DECLARE @ole_desc			varchar(2000)
 
 SET @rt_user_id = NULLIF(LTRIM(RTRIM(@rt_user_id)), '')
+-- reason kosong / NULL / '0' -> 'no note'
+SET @rt_reason  = ISNULL(NULLIF(NULLIF(LTRIM(RTRIM(@rt_reason)), ''), '0'), 'no note')
 
 IF @debug = 1
 BEGIN
