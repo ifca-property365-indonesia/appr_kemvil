@@ -102,11 +102,22 @@ BEGIN
 						  @rt_level_no, @rt_user_id, @rt_doc_no)
 		END
 
-		-- b. REVISE / REJECT: selesai, tidak kirim email
+		-- b. REVISE / REJECT: selesai, tidak ada email ke level berikutnya; feedback ke pembuat PR
 		IF @rt_status IN ('M', 'R')
 		BEGIN
 			COMMIT TRANSACTION
-			IF @debug = 1 RAISERROR('EXIT: status M/R, tidak kirim email', 0, 1) WITH NOWAIT
+			IF @debug = 1 RAISERROR('EXIT: status M/R, kirim feedback ke pembuat PR', 0, 1) WITH NOWAIT
+
+			-- di luar transaksi; gagal kirim feedback tidak membatalkan approval
+			BEGIN TRY
+				EXEC mgr.x_send_mail_feedback_po_request
+					@rt_entity_cd, @rt_project_no, @rt_doc_no, @rt_trx_type, @rt_module,
+					@rt_status, @rt_level_no, @rt_reason, @rt_user_id, @debug
+			END TRY
+			BEGIN CATCH
+				SET @msg = 'Feedback gagal: ' + ERROR_MESSAGE()
+				RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
+			END CATCH
 			RETURN
 		END
 
@@ -147,11 +158,26 @@ BEGIN
 			SET approved_status = 'A'
 			WHERE entity_cd = @rt_entity_cd AND request_no = @rt_doc_no AND request_trx_type = @rt_trx_type
 
+			UPDATE mgr.po_request_dt
+			SET status = 'A'
+			WHERE entity_cd = @rt_entity_cd AND request_no = @rt_doc_no
+
 			EXEC mgr.for_delay_ftp @rt_entity_cd
 
 			COMMIT TRANSACTION
 
-			IF @debug = 1 RAISERROR('EXIT: level terakhir, PR final approved', 0, 1) WITH NOWAIT
+			IF @debug = 1 RAISERROR('EXIT: level terakhir, PR final approved, kirim feedback ke pembuat PR', 0, 1) WITH NOWAIT
+
+			-- di luar transaksi; gagal kirim feedback tidak membatalkan approval
+			BEGIN TRY
+				EXEC mgr.x_send_mail_feedback_po_request
+					@rt_entity_cd, @rt_project_no, @rt_doc_no, @rt_trx_type, @rt_module,
+					'A', @rt_level_no, @rt_reason, @rt_user_id, @debug
+			END TRY
+			BEGIN CATCH
+				SET @msg = 'Feedback gagal: ' + ERROR_MESSAGE()
+				RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
+			END CATCH
 			RETURN
 		END
 

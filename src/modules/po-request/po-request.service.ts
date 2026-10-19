@@ -46,6 +46,9 @@ interface ApprovalToken {
  *     -> email ke approver berisi link /api/porequest/{A|M|R}/{token}
  *   approver klik link -> confirm() -> form -> execute()
  *     -> EXEC SP (update status, buka level berikutnya, SP memanggil /api/maildata lagi)
+ *   selesai (final approve / revise / reject)
+ *     -> SP x_send_mail_feedback_po_request --POST /api/maildata (PoRequestFeedback)--> sendFeedback()
+ *     -> email ke pembuat PR
  */
 @Injectable()
 export class PoRequestService {
@@ -60,6 +63,9 @@ export class PoRequestService {
 
   /** POST /api/maildata - body JSON dari SP. Balasan teks dibaca SP sebagai penanda sukses. */
   async send(body: Record<string, any>): Promise<string> {
+    if (body.module === 'PoRequestFeedback') {
+      return this.sendFeedback(body);
+    }
     if (body.module && body.module !== 'PoRequest') {
       this.logger.channel('sendmail').warn(`module "${body.module}" diproses sebagai PoRequest`);
     }
@@ -115,6 +121,62 @@ export class PoRequestService {
       return result.message;
     } catch (err: any) {
       this.logger.channel('sendmail').error(`Gagal mengirim email: ${err?.message ?? err}`);
+      return `Gagal mengirim email: ${err?.message ?? err}`;
+    }
+  }
+
+  /**
+   * Feedback ke pembuat PR saat proses selesai (dari SP x_send_mail_feedback_po_request):
+   * A = sudah di-approve semua level, M = diminta revisi, R = ditolak.
+   */
+  private async sendFeedback(body: Record<string, any>): Promise<string> {
+    const status = text(body.status).toUpperCase();
+    const option = STATUS[status];
+    const docNo = text(body.doc_no);
+    if (!option) {
+      this.logger.channel('sendmail').error(`Feedback ${LABEL} ${docNo}: status "${body.status}" tidak dikenal`);
+      return `Status feedback tidak dikenal: ${body.status}`;
+    }
+
+    const subjects: Record<string, string> = {
+      A: `${LABEL} No. ${docNo} has been Approved`,
+      M: `${LABEL} No. ${docNo} needs Revision`,
+      R: `${LABEL} No. ${docNo} has been Rejected`,
+    };
+
+    const dataArray = {
+      status,
+      status_text: option.done,
+      status_color: option.color,
+      entity_name: text(body.entity_name),
+      user_name: text(body.user_name),
+      doc_no: docNo,
+      descs: text(body.descs),
+      reason: text(body.reason),
+      sender: text(body.sender),
+      sender_addr: text(body.sender_addr),
+      approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
+      subject: subjects[status],
+    };
+
+    try {
+      const result = await this.approvalMail.sendGuarded({
+        emailAddr: body.email_addr,
+        cacheDir: 'feedback_porequest',
+        cachePrefix: 'email_feedback_sent_',
+        cacheKeyParts: [body.entity_cd, docNo, status, body.level_no, body.feedback_key].map(safeKey),
+        view: 'email.porequest.feedback',
+        subject: dataArray.subject,
+        data: { dataArray },
+        entityCd: text(body.entity_cd),
+        entityName: dataArray.entity_name,
+        logLabel: `Email Feedback ${LABEL}`,
+        docNo,
+      });
+
+      return result.message;
+    } catch (err: any) {
+      this.logger.channel('sendmail').error(`Gagal mengirim feedback: ${err?.message ?? err}`);
       return `Gagal mengirim email: ${err?.message ?? err}`;
     }
   }
@@ -254,6 +316,11 @@ export class PoRequestService {
 
 function text(value: any): string {
   return value === null || value === undefined ? '' : String(value).trim();
+}
+
+/** Bagian nama file penanda anti double-send: hanya karakter aman untuk nama file. */
+function safeKey(value: any): string {
+  return text(value).replace(/[^A-Za-z0-9_-]+/g, '');
 }
 
 function auditContext(data: ApprovalToken, status: string): Record<string, any> {
