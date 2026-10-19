@@ -34,7 +34,7 @@ export function blade(options: { appUrl: string; appName?: string }): Record<str
   /** Padanan helper `getEntityLogo()` di app/Helpers/logo_helper.php. */
   const getEntityLogo = (entityName?: string): string => {
     if (!entityName || String(entityName).trim() === '') {
-      return url('public/images/befa_header.png');
+      return url('public/images/ifca_header.png');
     }
 
     const baseName = String(entityName).trim();
@@ -51,7 +51,7 @@ export function blade(options: { appUrl: string; appName?: string }): Record<str
       }
     }
 
-    return url('public/images/befa_header.png');
+    return url('public/images/ifca_header.png');
   };
 
   const count = (value: any): number => {

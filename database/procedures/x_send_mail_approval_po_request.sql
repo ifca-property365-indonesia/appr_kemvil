@@ -36,8 +36,6 @@ DECLARE @f_entity_name		varchar(255)
 DECLARE @f_url_file			varchar(max)
 DECLARE @f_file_name		varchar(max)
 DECLARE @f_approve_exist	varchar(max) = 'EMPTY'
-DECLARE @f_clarify_user		varchar(max)
-DECLARE @f_clarify_email	varchar(max)
 DECLARE @sql				nvarchar(max)
 DECLARE @err_msg			nvarchar(2048)
 DECLARE @msg				nvarchar(2047)
@@ -186,9 +184,26 @@ SELECT a.user_id,
 	   CAST(a.level_no AS varchar(12)),
 	   REPLACE(REPLACE(REPLACE(REPLACE(a.remarks, CHAR(9), ''), CHAR(10), ''), CHAR(13), ''), '"', ''),
 	   u.email_add, u.description,
-	   u.description, u.email_add	-- sender = staff_id = a.user_id (sama seperti versi lama)
+	   -- sender & kontak klarifikasi:
+	   --   level pertama      -> pembuat PR (po_authorized_person.prepared_by)
+	   --   level 2 dst        -> approver (user_id) di level sebelumnya
+	   COALESCE(prev.names, pb.description),
+	   COALESCE(prev.emails, pb.email_add)
 FROM mgr.po_authorized_person a
 LEFT JOIN mgr.security_users u (NOLOCK) ON u.name = a.user_id
+LEFT JOIN mgr.security_users pb (NOLOCK) ON pb.name = a.prepared_by
+OUTER APPLY (
+	SELECT STRING_AGG(CAST(pu.description AS varchar(max)), '; ') AS names,
+		   STRING_AGG(CAST(pu.email_add AS varchar(max)), '; ') AS emails
+	FROM mgr.po_authorized_person p
+	JOIN mgr.security_users pu (NOLOCK) ON pu.name = p.user_id
+	WHERE p.entity_cd = a.entity_cd AND p.doc_no = a.doc_no
+	  AND p.type = a.type AND p.module = a.module AND p.trx_type = a.trx_type
+	  AND p.level_no = (SELECT MAX(x.level_no) FROM mgr.po_authorized_person x
+						WHERE x.entity_cd = a.entity_cd AND x.doc_no = a.doc_no
+						  AND x.type = a.type AND x.module = a.module AND x.trx_type = a.trx_type
+						  AND x.level_no < a.level_no)
+) prev
 WHERE a.entity_cd = @rt_entity_cd AND a.doc_no = @rt_doc_no
   AND a.status = 'O' AND a.type = @f_type AND a.module = @rt_module AND a.trx_type = @rt_trx_type
   AND a.level_no = (SELECT MIN(l.level_no)
@@ -216,7 +231,7 @@ END
 -- URL aplikasi approval (tanpa slash di akhir), contoh: https://approval.kemvil.co.id
 --SELECT @f_api_mail = api_mail FROM mgr.ar_spec (NOLOCK)
 -- SQL Server & aplikasi satu jaringan -> HTTP langsung ke Node (port 7353 tidak pakai SSL)
-SET @f_api_mail = 'http://10.10.0.25:7353'
+SET @f_api_mail = 'http://10.10.0.25:7354'
 SET @URL = ISNULL(@f_api_mail, '') + '/api/maildata'
 
 SELECT @f_entity_name = entity_name
@@ -260,9 +275,8 @@ ELSE IF @debug = 1
 SELECT @f_url_file  = ISNULL(NULLIF(@f_url_file, ''), 'EMPTY'),
 	   @f_file_name = ISNULL(NULLIF(@f_file_name, ''), 'EMPTY')
 
--- ---------------- Approver sebelumnya & kontak klarifikasi ----------------
+-- ---------------- Approver sebelumnya ----------------
 IF @rt_level > 0
-BEGIN
 	SELECT @f_approve_exist = ISNULL(STRING_AGG(CAST(user_id AS varchar(max)), '; ')
 								WITHIN GROUP (ORDER BY level_no), 'EMPTY')
 	FROM mgr.po_authorized_person
@@ -270,19 +284,9 @@ BEGIN
 	  AND status = 'A' AND trx_type = @rt_trx_type AND module = @rt_module
 	  AND user_id IS NOT NULL
 
-	-- kontak klarifikasi = approver di level yang baru saja approve
-	SELECT @f_clarify_email = ISNULL(STRING_AGG(CAST(ISNULL(u.email_add, 'EMPTY') AS varchar(max)), '; '), 'EMPTY'),
-		   @f_clarify_user  = ISNULL(STRING_AGG(CAST(ISNULL(u.description, 'EMPTY') AS varchar(max)), '; '), 'EMPTY')
-	FROM mgr.po_authorized_person a
-	JOIN mgr.security_users u (NOLOCK) ON u.name = a.user_id
-	WHERE a.entity_cd = @rt_entity_cd AND a.doc_no = @rt_doc_no
-	  AND a.trx_type = @rt_trx_type AND a.module = @rt_module AND a.level_no = @rt_level_no
-END
-
 IF @debug = 1
 BEGIN
-	SET @msg = CONCAT('URL=', @URL, ' | entity_name=', @f_entity_name, ' | approve_exist=', @f_approve_exist,
-					  ' | clarify_user=', @f_clarify_user, ' | clarify_email=', @f_clarify_email)
+	SET @msg = CONCAT('URL=', @URL, ' | entity_name=', @f_entity_name, ' | approve_exist=', @f_approve_exist)
 	RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
 	SET @msg = LEFT(CONCAT('url_file=', @f_url_file, ' | file_name=', @f_file_name), 2047)
 	RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
@@ -344,8 +348,8 @@ BEGIN
 			ISNULL(r.descs, '')						AS descs,
 			ISNULL(r.user_name, '')					AS user_name,
 			@f_approve_exist						AS approve_exist,
-			ISNULL(CASE WHEN @rt_level = 0 THEN r.sender      ELSE @f_clarify_user  END, '') AS clarify_user,
-			ISNULL(CASE WHEN @rt_level = 0 THEN r.sender_addr ELSE @f_clarify_email END, '') AS clarify_email,
+			ISNULL(r.sender, '')					AS clarify_user,
+			ISNULL(r.sender_addr, '')				AS clarify_email,
 			ISNULL(@rt_reason, '')					AS reason
 		FROM @recipients r
 		WHERE r.row_id = @i

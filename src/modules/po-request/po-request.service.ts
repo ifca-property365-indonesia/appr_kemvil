@@ -169,7 +169,8 @@ export class PoRequestService {
 
     const audit = this.logger.channel(AUDIT_CHANNEL);
     const context = auditContext(data, status);
-    const reason = String(body.reason ?? '').trim();
+    const rawReason = String(body.reason ?? '').trim();
+    const reason = rawReason === '' || rawReason === '0' ? 'no note' : rawReason;
     const started = Date.now();
 
     audit.info(`MULAI ${option.done} ${LABEL} No. ${data.doc_no}`, context);
