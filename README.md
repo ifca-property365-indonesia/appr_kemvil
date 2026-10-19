@@ -2,7 +2,7 @@
 
 Gateway email approval **Purchase Requisition (PR)** untuk Kemang Village.
 Aplikasi ini hanya punya satu alur: menerima data dari stored procedure
-`mgr.x_send_mail_approval_po_request_m`, mengirim email ke approver, lalu
+`mgr.x_send_mail_approval_po_request`, mengirim email ke approver, lalu
 menjalankan keputusan approver (Approve / Revise / Reject) kembali ke SP.
 
 ---
@@ -32,7 +32,7 @@ Server berjalan di `APP_PORT` (default `3000`).
 ERP submit PR / approver klik link
         │
         ▼
-EXEC mgr.x_send_mail_approval_po_request_m
+EXEC mgr.x_send_mail_approval_po_request
         │  1. update status approver (O -> A/M/R)
         │  2. approve: buka level berikutnya (N -> O), atau final approve PR
         │  3. POST JSON ke {APP_URL}/api/maildata untuk setiap approver berstatus O
@@ -64,7 +64,7 @@ semua approver di level itu approve.
 
 ## 3. Stored procedure
 
-Script ada di [`database/procedures/x_send_mail_approval_po_request_m.sql`](database/procedures/x_send_mail_approval_po_request_m.sql)
+Script ada di [`database/procedures/x_send_mail_approval_po_request.sql`](database/procedures/x_send_mail_approval_po_request.sql)
 dan dijalankan **manual** di database tujuan.
 
 | Parameter | Keterangan |
@@ -77,15 +77,17 @@ dan dijalankan **manual** di database tujuan.
 | `@rt_user_id` | approver yang memproses. `NULL` = semua approver di level tsb |
 | `@debug` | `1` = print setiap langkah dan body JSON tanpa mengirim HTTP |
 
-Sebelum dipakai, isi URL aplikasi pada SP (bagian 3, `@f_api_mail`) sehingga
-`@URL` menjadi URL lengkap, misalnya `https://approval.kemvil.co.id/api/maildata`.
-SP butuh `Ole Automation Procedures` aktif di SQL Server.
+URL aplikasi diisi pada SP (bagian 3, `@f_api_mail`), saat ini
+`http://10.10.0.25:7353`. SQL Server dan aplikasi berada di jaringan yang sama,
+jadi pakai **HTTP** langsung ke Node: `https://<IP>` selalu gagal dengan error
+"The host name in the certificate is invalid". SP butuh
+`Ole Automation Procedures` aktif di SQL Server.
 
 Contoh uji tanpa mengubah data:
 
 ```sql
 BEGIN TRAN
-EXEC mgr.x_send_mail_approval_po_request_m
+EXEC mgr.x_send_mail_approval_po_request
     '01', '<project_no>', 'PR26100033', 'PR', 'PR', 'A', '1', 'ok', 'INU', @debug = 1
 ROLLBACK
 ```

@@ -5,7 +5,7 @@ import { PoRequestService } from './po-request.service';
 export class PoRequestController {
   constructor(private readonly service: PoRequestService) {}
 
-  /** POST /api/maildata - dipanggil SP x_send_mail_approval_po_request_m. */
+  /** POST /api/maildata - dipanggil SP x_send_mail_approval_po_request. */
   @Post('maildata')
   @Header('Content-Type', 'text/plain; charset=utf-8')
   send(@Body() body: Record<string, any>) {

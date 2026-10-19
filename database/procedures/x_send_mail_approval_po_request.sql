@@ -1,5 +1,5 @@
 /*
- * mgr.x_send_mail_approval_po_request_m
+ * mgr.x_send_mail_approval_po_request
  *
  * Approval Purchase Requisition + kirim email ke approver berikutnya.
  * Dipanggil oleh aplikasi (POST /api/porequest/getaccess) dan oleh ERP saat submit (level 0).
@@ -15,7 +15,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [mgr].[x_send_mail_approval_po_request_m]
+CREATE OR ALTER PROCEDURE [mgr].[x_send_mail_approval_po_request]
 	@rt_entity_cd		varchar(4),
 	@rt_project_no		varchar(20),
 	@rt_doc_no			varchar(30),
@@ -215,6 +215,8 @@ END
 -- ======================================================================
 -- URL aplikasi approval (tanpa slash di akhir), contoh: https://approval.kemvil.co.id
 --SELECT @f_api_mail = api_mail FROM mgr.ar_spec (NOLOCK)
+-- SQL Server & aplikasi satu jaringan -> HTTP langsung ke Node (port 7353 tidak pakai SSL)
+SET @f_api_mail = 'http://10.10.0.25:7353'
 SET @URL = ISNULL(@f_api_mail, '') + '/api/maildata'
 
 SELECT @f_entity_name = entity_name

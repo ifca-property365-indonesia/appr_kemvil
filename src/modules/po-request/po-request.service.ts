@@ -8,8 +8,8 @@ import { AppLoggerService } from '../../common/logger/app-logger.service';
 import { ApprovalMailService } from '../../common/mail/approval-mail.service';
 import { ViewService } from '../../common/view/view.service';
 
-/** Stored procedure approval PR (lihat mgr.x_send_mail_approval_po_request_m). */
-const PROCEDURE = 'mgr.x_send_mail_approval_po_request_m';
+/** Stored procedure approval PR (lihat mgr.x_send_mail_approval_po_request). */
+const PROCEDURE = 'mgr.x_send_mail_approval_po_request';
 const APPROVAL_TABLE = 'mgr.po_authorized_person';
 const LABEL = 'Purchase Requisition';
 const AUDIT_CHANNEL = 'approval';
@@ -42,7 +42,7 @@ interface ApprovalToken {
 /**
  * Satu-satunya alur email approval:
  *
- *   SP x_send_mail_approval_po_request_m --POST /api/maildata--> send()
+ *   SP x_send_mail_approval_po_request --POST /api/maildata--> send()
  *     -> email ke approver berisi link /api/porequest/{A|M|R}/{token}
  *   approver klik link -> confirm() -> form -> execute()
  *     -> EXEC SP (update status, buka level berikutnya, SP memanggil /api/maildata lagi)
