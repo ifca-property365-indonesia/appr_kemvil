@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="x-apple-disable-message-reformatting">
-    <title>IFCA - Bekasi Fajar</title>
+    <title>IFCA - KEMVIL</title>
     <link rel="shortcut icon" type="image/x-icon" href="<%= url('public/images/befa_header.ico') %>">
     
     <style>
@@ -27,7 +27,7 @@
                         <tbody>
                             <tr>
                                 <td align="center" style="padding-bottom:25px; text-align:center;">
-                                    <% entityName = entity_name ?? 'PT Bekasi Fajar'; %>
+                                    <% entityName = entity_name || 'KEMVIL'; %>
 
                                     <img src="<%= getEntityLogo(entityName) %>" 
                                         alt="logo" befa_header

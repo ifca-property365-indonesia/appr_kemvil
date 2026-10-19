@@ -52,7 +52,7 @@ async function bootstrap(): Promise<void> {
   const port = config.get<number>('app.port') ?? 3000;
   await app.listen(port, '0.0.0.0');
 
-  const banner = `Approval BEFA (NestJS) berjalan di ${config.get<string>('app.url')} (port ${port})`;
+  const banner = `Approval KEMVIL (NestJS) berjalan di ${config.get<string>('app.url')} (port ${port})`;
   logger.channel('daily').info(banner);
   // eslint-disable-next-line no-console
   console.log(banner);
