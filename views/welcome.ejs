@@ -8,7 +8,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><%= appName %> - Approval BEFA</title>
+    <title><%= appName %> - Approval KEMVIL</title>
     <!--
       Tautan ke alamat aplikasi sendiri ditulis relatif terhadap root ("/...").
       Browser menyelesaikannya memakai alamat halaman yang sedang dibuka, jadi
@@ -40,18 +40,16 @@
 <body>
     <div class="wrap">
         <div class="card">
-            <h1>Approval BEFA</h1>
+            <h1>Approval KEMVIL</h1>
             <p>Layanan pengiriman dan pemrosesan email approval (NestJS).</p>
 
             <p><b>Halaman &amp; endpoint utama:</b></p>
             <ul>
-                <li>
-                    <a href="/appr-list">Approval List</a> - <code>/appr-list</code>
-                </li>
                 <li><code>GET /api/connect</code> - cek koneksi database</li>
                 <li><code>GET /api/info</code> - informasi runtime &amp; konfigurasi</li>
-                <li><code>POST /api/maildata</code> - kirim email approval (module dinamis)</li>
-                <li><code>GET /api/processdata/{module}/{status}/{token}</code> - halaman konfirmasi</li>
+                <li><code>POST /api/maildata</code> - kirim email approval Purchase Requisition (dipanggil SP)</li>
+                <li><code>GET /api/porequest/{A|M|R}/{token}</code> - halaman konfirmasi</li>
+                <li><code>POST /api/porequest/getaccess</code> - eksekusi approval</li>
             </ul>
 
             <p class="muted">Base URL: <code><%= baseUrl %></code></p>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>IFCA - Approval</title>
+    <style>
+        body { font-family: Arial; margin: 0; padding: 0 !important; background-color: #ffffff; }
+        table { border-collapse: collapse; width: 100%; }
+        textarea { width: 100%; box-sizing: border-box; padding: 8px; font-family: Arial; font-size: 14px; border: 1px solid #bbbbbb; border-radius: 4px; }
+    </style>
+</head>
+
+<body>
+    <div style="width: 100%; background-color: #ffffff; text-align: center;">
+        <table width="80%" border="0" cellpadding="0" cellspacing="0" style="margin-left: auto; margin-right: auto;">
+            <tr>
+                <td style="padding: 40px 0;">
+                    <table style="width:100%; max-width:620px; margin:0 auto;">
+                        <tbody>
+                            <tr>
+                                <td style="text-align: center; padding-bottom:25px">
+                                    <img src="<%= url('public/images/email_header.png') %>" alt="logo" height="56"
+                                        style="display:inline-block; border:0; outline:none; text-decoration:none;">
+                                    <p style="font-size:16px; color:#026735; margin:10px 0 0; text-align:center;"><%= entity_name %></p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <table style="width:100%; max-width:620px; margin:0 auto; background-color:#e0e0e0;">
+                        <tbody>
+                            <tr>
+                                <td style="text-align:center; padding: 50px 30px;">
+                                    <img style="width:88px; margin-bottom:24px;" src="<%= url('public/images/double_approve.png') %>" alt="Verified">
+                                    <p>Do you want to <%= valuebt %> Purchase Requisition No. <b><%= doc_no %></b> ?</p>
+
+                                    <form method="POST" action="<%= url('/api/porequest/getaccess') %>">
+                                        <input type="hidden" name="status" value="<%= status %>">
+                                        <input type="hidden" name="encrypt" value="<%= encrypt %>">
+
+                                        <% if (status == 'M') { %>
+                                            <p>Please provide the reasons for requesting this revision</p>
+                                        <% } else if (status == 'R') { %>
+                                            <p>Please provide the reasons for rejecting this request</p>
+                                        <% } else { %>
+                                            <p>Add Comment</p>
+                                        <% } %>
+                                        <textarea name="reason" rows="3" <%= status == 'A' ? '' : 'required' %>></textarea>
+
+                                        <input type="submit" value="<%= valuebt %>"
+                                            style="background-color:<%= bgcolor %>; color:#ffffff; border:0; border-radius:4px; cursor:pointer; font-size:13px; font-weight:600; line-height:44px; text-transform:uppercase; padding:0 40px; margin:10px;">
+                                    </form>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <table style="width:100%; max-width:620px; margin:0 auto;">
+                        <tbody>
+                            <tr>
+                                <td style="text-align: center; padding:25px 20px 0;">
+                                    <p style="font-size: 13px;">Copyright © <%= new Date().getFullYear() %> IFCA Software. All rights reserved.</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
