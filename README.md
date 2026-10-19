@@ -60,12 +60,20 @@ Revise dan Reject menghentikan alur; tidak ada email ke level berikutnya.
 Bila satu level punya beberapa approver, level berikutnya baru dibuka setelah
 semua approver di level itu approve.
 
+**Feedback ke pembuat PR.** Saat PR selesai (approve di level terakhir, Revise,
+atau Reject), SP approval memanggil `mgr.x_send_mail_feedback_po_request`. SP ini
+mengirim email ke `po_authorized_person.prepared_by` berisi status, alasan, dan
+daftar approver; "Thank you" berasal dari approver terakhir yang memproses.
+Gagal kirim feedback tidak membatalkan approval.
+
 ---
 
 ## 3. Stored procedure
 
 Script ada di [`database/procedures/x_send_mail_approval_po_request.sql`](database/procedures/x_send_mail_approval_po_request.sql)
-dan dijalankan **manual** di database tujuan.
+dan [`database/procedures/x_send_mail_feedback_po_request.sql`](database/procedures/x_send_mail_feedback_po_request.sql),
+dijalankan **manual** di database tujuan (feedback lebih dulu). URL `@f_api_mail`
+di kedua SP harus sama.
 
 | Parameter | Keterangan |
 | --- | --- |
