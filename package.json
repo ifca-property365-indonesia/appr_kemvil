@@ -1,5 +1,5 @@
 {
-  "name": "approval-befa-nest",
+  "name": "approval-kemvil",
   "version": "1.0.0",
   "description": "BEFA Approval Mail Gateway - NestJS migration of the Laravel approval_befa application",
   "private": true,
