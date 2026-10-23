@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
+import { maskEmail } from '../helpers/redact.helper';
 import { AppLoggerService } from '../logger/app-logger.service';
 import { ViewService } from '../view/view.service';
 import { SmtpConfigService } from './smtp-config.service';
@@ -24,6 +25,8 @@ export interface SendMailOptions {
   entityCd?: string;
   /** Dipakai untuk menyusun fromName default. */
   entityName?: string;
+  /** Field penelusuran yang ikut ditulis ke log transaksi SMTP (doc_no, entity_cd, ...). */
+  logContext?: Record<string, unknown>;
 }
 
 /**
@@ -79,18 +82,52 @@ export class MailService {
       options.fromName ??
       (options.entityName ? `${baseFromName} - ${options.entityName}` : baseFromName);
 
-    const html = this.view.render(options.view, options.data ?? {});
-
-    const transporter = this.transporter({ host, port, encryption, username, password });
-
-    await transporter.sendMail({
-      from: { address: fromAddress, name: fromName },
-      to: normalizeAddresses(options.to),
-      cc: normalizeAddresses(options.cc),
-      bcc: normalizeAddresses(options.bcc),
+    const to = normalizeAddresses(options.to);
+    const cc = normalizeAddresses(options.cc);
+    const bcc = normalizeAddresses(options.bcc);
+    const meta: Record<string, unknown> = {
+      ...options.logContext,
+      host: `${host}:${port}`,
+      to: maskList(to),
+      cc: maskList(cc),
+      bcc: maskList(bcc),
       subject: options.subject,
-      html,
-    });
+      view: options.view,
+    };
+
+    this.logger.transaction('SMTP', 'MULAI', options.subject, meta);
+    const started = Date.now();
+
+    try {
+      const html = this.view.render(options.view, options.data ?? {});
+      const transporter = this.transporter({ host, port, encryption, username, password });
+
+      const info = await transporter.sendMail({
+        from: { address: fromAddress, name: fromName },
+        to,
+        cc,
+        bcc,
+        subject: options.subject,
+        html,
+      });
+
+      this.logger.transaction('SMTP', 'SUKSES', options.subject, {
+        ...meta,
+        messageId: info?.messageId,
+        accepted: maskList(info?.accepted),
+        rejected: maskList(info?.rejected),
+        response: info?.response,
+        durationMs: Date.now() - started,
+      });
+    } catch (err: any) {
+      this.logger.transaction('SMTP', 'GAGAL', `${options.subject}: ${err?.message ?? err}`, {
+        ...meta,
+        code: err?.code,
+        response: err?.response,
+        durationMs: Date.now() - started,
+      });
+      throw err;
+    }
   }
 
   /** Render view tanpa mengirim email (dipakai untuk preview/debug). */
@@ -129,6 +166,12 @@ export class MailService {
 
     return transporter;
   }
+}
+
+/** Alamat untuk log: disamarkan, `accepted`/`rejected` nodemailer bisa berupa objek Address. */
+function maskList(list?: Array<string | { address?: string }>): string[] | undefined {
+  if (!list || list.length === 0) return undefined;
+  return list.map((item) => maskEmail(typeof item === 'string' ? item : item?.address));
 }
 
 function normalizeAddresses(value?: string | string[]): string[] | undefined {

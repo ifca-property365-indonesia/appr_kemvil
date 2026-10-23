@@ -165,10 +165,6 @@ export class DatabaseService implements OnModuleDestroy {
    */
   async execProcedureDetailed(procedure: string, params: any[] = []): Promise<ProcedureResult> {
     const capture = this.config.get<boolean>('log.procReturnCode') ?? true;
-    const pool = await this.getPool();
-    const request = pool.request();
-
-    params.forEach((value, index) => request.input(`p${index}`, normalize(value)));
     const args = params.map((_, index) => `@p${index}`).join(', ');
     const call = args ? `${procedure} ${args}` : procedure;
 
@@ -177,9 +173,15 @@ export class DatabaseService implements OnModuleDestroy {
       : `SET NOCOUNT ON; EXEC ${call};`;
 
     this.logger.channel('daily').info('Executing Procedure', { proc: procedure, params });
+    this.logger.transaction('EXEC_SP', 'MULAI', procedure, { proc: procedure, params });
 
     const started = Date.now();
     try {
+      // Koneksi dibuka di dalam try supaya kegagalan koneksi ikut tercatat sebagai GAGAL.
+      const pool = await this.getPool();
+      const request = pool.request();
+      params.forEach((value, index) => request.input(`p${index}`, normalize(value)));
+
       const result = await request.query(statement);
       const durationMs = Date.now() - started;
       const returnCode = capture ? extractReturnCode(result) : null;
@@ -198,15 +200,15 @@ export class DatabaseService implements OnModuleDestroy {
       } else {
         this.logger.channel('daily').info(`Procedure ${procedure} selesai`, meta);
       }
+      // Return code bukan 0 tetap SUKSES (lihat catatan di atas); nilainya ada di meta.
+      this.logger.transaction('EXEC_SP', 'SUKSES', procedure, { ...meta, params });
 
       return { ok: true, returnCode, rowsAffected, durationMs };
     } catch (err: any) {
       const durationMs = Date.now() - started;
-      this.logger.channel('daily').error(`Procedure ${procedure} gagal: ${err?.message ?? err}`, {
-        proc: procedure,
-        params,
-        durationMs,
-      });
+      const meta = { proc: procedure, params, durationMs };
+      this.logger.channel('daily').error(`Procedure ${procedure} gagal: ${err?.message ?? err}`, meta);
+      this.logger.transaction('EXEC_SP', 'GAGAL', `${procedure}: ${err?.message ?? err}`, meta);
       throw err;
     }
   }

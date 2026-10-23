@@ -1,23 +1,40 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import { randomBytes } from 'crypto';
 
 /**
- * Nama module yang sedang diproses, dipakai `AppLoggerService` untuk memilih
- * file log. Disimpan pada AsyncLocalStorage supaya seluruh pemanggilan log di
- * dalam satu alur (termasuk `await` berlapis) otomatis ikut, tanpa perlu
- * mengoper nama module ke setiap `logger.channel(...)`.
+ * Nama module yang sedang diproses (dipakai `AppLoggerService` untuk memilih
+ * file log) beserta id request (ditulis di setiap baris log supaya satu alur
+ * dapat ditelusuri lintas channel). Disimpan pada AsyncLocalStorage supaya
+ * seluruh pemanggilan log di dalam satu alur (termasuk `await` berlapis)
+ * otomatis ikut, tanpa perlu mengoper nilainya ke setiap `logger.channel(...)`.
  */
-const storage = new AsyncLocalStorage<string>();
+interface LogContext {
+  module: string;
+  requestId: string;
+}
+
+const storage = new AsyncLocalStorage<LogContext>();
 
 /** Dipakai bila proses berjalan di luar konteks module (startup, error pool DB). */
 export const DEFAULT_LOG_MODULE = 'general';
 
-/** Jalankan `fn` dengan nama module tertentu sebagai konteks log. */
+/** Jalankan `fn` dengan nama module tertentu sebagai konteks log, dengan id request baru. */
 export function runWithLogModule<T>(module: string, fn: () => T): T {
-  return storage.run(sanitizeLogModule(module), fn);
+  return storage.run({ module: sanitizeLogModule(module), requestId: newRequestId() }, fn);
 }
 
 export function currentLogModule(): string {
-  return storage.getStore() ?? DEFAULT_LOG_MODULE;
+  return storage.getStore()?.module ?? DEFAULT_LOG_MODULE;
+}
+
+/** Id request yang sedang berjalan; kosong bila di luar request (startup, timer). */
+export function currentRequestId(): string {
+  return storage.getStore()?.requestId ?? '';
+}
+
+/** 8 karakter hex, cukup unik untuk menelusuri log harian. */
+function newRequestId(): string {
+  return randomBytes(4).toString('hex');
 }
 
 /**

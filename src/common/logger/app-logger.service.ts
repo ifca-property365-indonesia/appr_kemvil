@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
-import { currentLogModule } from './log-context';
+import { currentLogModule, currentRequestId } from './log-context';
 
 /**
  * Padanan `Log::channel('nama')->info(...)` milik Laravel.
@@ -22,6 +22,30 @@ import { currentLogModule } from './log-context';
  * karena isinya lintas module.
  */
 const FLAT_CHANNELS = new Set(['request']);
+
+const TRANSACTION_CHANNEL = 'transaction';
+
+/**
+ * Jenis transaksi:
+ *   TERIMA_MAILDATA - request /api/maildata dari SP
+ *   EMAIL_APPROVAL  - email permintaan approval ke approver
+ *   EMAIL_FEEDBACK  - email hasil akhir ke pembuat PR
+ *   SMTP            - pengiriman ke server SMTP
+ *   KONFIRMASI      - approver membuka link di email
+ *   APPROVAL        - approver submit Approve/Revise/Reject
+ *   EXEC_SP         - eksekusi stored procedure
+ */
+export type TransactionAction =
+  | 'TERIMA_MAILDATA'
+  | 'EMAIL_APPROVAL'
+  | 'EMAIL_FEEDBACK'
+  | 'SMTP'
+  | 'KONFIRMASI'
+  | 'APPROVAL'
+  | 'EXEC_SP';
+
+/** LEWAT = sengaja tidak diproses (sudah terkirim, tanpa penerima); DITOLAK = link tidak berlaku. */
+export type TransactionStage = 'MULAI' | 'SUKSES' | 'GAGAL' | 'LEWAT' | 'DITOLAK';
 
 /** Pola direktori log harian, dipakai saat membersihkan log lama. */
 const DATED_DIR = /^(.+)-(\d{4}-\d{2}-\d{2})$/;
@@ -65,7 +89,10 @@ export class AppLoggerService implements OnModuleInit, OnModuleDestroy {
         winston.format.printf(({ timestamp, level, message, ...meta }) => {
           const extra = Object.keys(meta).length ? ` ${safeStringify(meta)}` : '';
           const label = flat ? name : `${name}.${module}`;
-          return `[${timestamp}] ${label}.${level.toUpperCase()}: ${message}${extra}`;
+          // Dibaca saat menulis (bukan saat logger dibuat) karena logger di-cache lintas request.
+          const requestId = currentRequestId();
+          const rid = requestId ? ` [${requestId}]` : '';
+          return `[${timestamp}]${rid} ${label}.${level.toUpperCase()}: ${message}${extra}`;
         }),
       ),
       transports: [flat ? this.flatTransport(name) : this.moduleTransport(name, module, date)],
@@ -108,6 +135,25 @@ export class AppLoggerService implements OnModuleInit, OnModuleDestroy {
 
   error(message: string, meta?: Record<string, unknown>): void {
     this.channel('daily').error(message, meta);
+  }
+
+  /**
+   * Log transaksi -> `storage/logs/transaction-YYYY-MM-DD/<module>.log`.
+   *
+   * Satu baris per tahap transaksi (kirim email, SMTP, konfirmasi, approval,
+   * exec SP) dengan format seragam supaya seluruh jejak satu dokumen dapat
+   * dicari dengan grep doc_no atau id request:
+   *
+   *   [..] [a1b2c3d4] transaction.po_request.INFO: EXEC_SP SUKSES mgr.x_send_... {...}
+   */
+  transaction(
+    action: TransactionAction,
+    stage: TransactionStage,
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void {
+    const level = stage === 'GAGAL' ? 'error' : stage === 'LEWAT' || stage === 'DITOLAK' ? 'warn' : 'info';
+    this.channel(TRANSACTION_CHANNEL)[level](`${action} ${stage} ${message}`, meta);
   }
 
   /** Hapus folder log harian yang lebih tua dari `log.retentionDays`. */

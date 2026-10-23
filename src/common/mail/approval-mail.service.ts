@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MailCacheService } from '../cache/mail-cache.service';
-import { AppLoggerService } from '../logger/app-logger.service';
+import { maskEmail } from '../helpers/redact.helper';
+import { AppLoggerService, TransactionAction } from '../logger/app-logger.service';
 import { MailService } from './mail.service';
 
 export interface GuardedSendOptions {
@@ -31,6 +32,10 @@ export interface GuardedSendOptions {
   logLabel: string;
   docNo?: any;
   entityCdForLog?: any;
+  /** Jenis transaksi pada log `transaction`, default `EMAIL_APPROVAL`. */
+  trxAction?: TransactionAction;
+  /** Field penelusuran tambahan untuk log transaksi (level_no, user_id, ...). */
+  logContext?: Record<string, unknown>;
 }
 
 export interface GuardedSendResult {
@@ -61,9 +66,21 @@ export class ApprovalMailService {
     const docNo = options.docNo ?? options.data?.doc_no ?? '';
     const entityCd = options.entityCdForLog ?? options.entityCd ?? '';
     const channel = options.logChannel ?? 'sendmailapproval';
+    const action = options.trxAction ?? 'EMAIL_APPROVAL';
+    const trxMeta: Record<string, unknown> = {
+      entity_cd: entityCd,
+      doc_no: docNo,
+      ...options.logContext,
+      to: recipients.map(maskEmail),
+      subject: options.subject,
+    };
+    const started = Date.now();
+
+    this.logger.transaction(action, 'MULAI', `${options.logLabel} doc_no ${docNo}`, trxMeta);
 
     if (recipients.length === 0) {
       this.logger.channel('sendmail').warn(`No email address provided for document ${docNo}`);
+      this.logger.transaction(action, 'LEWAT', `${options.logLabel} doc_no ${docNo}: tidak ada alamat email`, trxMeta);
       return {
         sent: false,
         alreadySent: false,
@@ -77,9 +94,27 @@ export class ApprovalMailService {
     const prefix = options.cachePrefix ?? 'email_sent_';
     const relativeDir = `${options.cacheDir}/${date}`;
 
+    const mailLogContext = { entity_cd: entityCd, doc_no: docNo, ...options.logContext };
+
     try {
       if (options.perRecipient) {
-        return await this.sendPerRecipient(options, recipients, relativeDir, prefix, docNo, entityCd, channel);
+        const result = await this.sendPerRecipient(
+          options,
+          recipients,
+          relativeDir,
+          prefix,
+          docNo,
+          entityCd,
+          channel,
+          mailLogContext,
+        );
+        this.logger.transaction(
+          action,
+          result.sent ? 'SUKSES' : 'LEWAT',
+          `${options.logLabel} doc_no ${docNo}: ${result.message}`,
+          { ...trxMeta, durationMs: Date.now() - started },
+        );
+        return result;
       }
 
       const fileName = `${prefix}${options.cacheKeyParts.map(clean).join('_')}.txt`;
@@ -95,6 +130,7 @@ export class ApprovalMailService {
           entityCd: options.entityCd,
           entityName: options.entityName,
           fromName: options.fromName,
+          logContext: mailLogContext,
         });
       });
 
@@ -104,6 +140,11 @@ export class ApprovalMailService {
         this.logger
           .channel(channel)
           .info(`${options.logLabel} doc_no ${docNo} Entity ${entityCd} already sent to: ${sentTo}`);
+        this.logger.transaction(action, 'LEWAT', `${options.logLabel} doc_no ${docNo}: sudah pernah dikirim`, {
+          ...trxMeta,
+          marker: fileName,
+          durationMs: Date.now() - started,
+        });
         return {
           sent: false,
           alreadySent: true,
@@ -116,6 +157,10 @@ export class ApprovalMailService {
       this.logger
         .channel(channel)
         .info(`${options.logLabel} doc_no ${docNo} Entity ${entityCd} berhasil dikirim ke: ${sentTo}`);
+      this.logger.transaction(action, 'SUKSES', `${options.logLabel} doc_no ${docNo}`, {
+        ...trxMeta,
+        durationMs: Date.now() - started,
+      });
 
       return {
         sent: true,
@@ -126,6 +171,10 @@ export class ApprovalMailService {
       };
     } catch (err: any) {
       this.logger.channel('sendmail').error(`Gagal mengirim email: ${err?.message ?? err}`);
+      this.logger.transaction(action, 'GAGAL', `${options.logLabel} doc_no ${docNo}: ${err?.message ?? err}`, {
+        ...trxMeta,
+        durationMs: Date.now() - started,
+      });
       return {
         sent: false,
         alreadySent: false,
@@ -145,6 +194,7 @@ export class ApprovalMailService {
     docNo: any,
     entityCd: any,
     channel: string,
+    logContext: Record<string, unknown>,
   ): Promise<GuardedSendResult> {
     const messages: string[] = [];
     let anySent = false;
@@ -165,6 +215,7 @@ export class ApprovalMailService {
           entityCd: options.entityCd,
           entityName: options.entityName,
           fromName: options.fromName,
+          logContext,
         });
       });
 
