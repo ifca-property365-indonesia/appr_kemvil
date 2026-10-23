@@ -41,10 +41,10 @@
                             <tr>
                                 <td style="padding: 30px 30px">
                                     <h5 style="text-align:left; margin-bottom: 24px; color: #000000; font-size: 20px; font-weight: 400; line-height: 28px;">Dear <%= dataArray['user_name'] %>,</h5>
-                                    <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 16px;">Below is a purchase requisition that requires your approval :</p>
+                                    <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 16px;">Below is a request to purchase that requires your approval :</p>
 
                                     <p style="text-align:left; margin-bottom: 15px; margin-top: 0; color: #000000; font-size: 16px;">
-                                        <% if (dataArray['descs']) { %><b><%= dataArray['descs'] %></b><br><% } %>
+                                        <% if (dataArray['descs']) { %>Description :<br><b><%= dataArray['descs'] %></b><br><% } %>
                                         PR No.: <%= dataArray['doc_no'] %>
                                     </p>
 

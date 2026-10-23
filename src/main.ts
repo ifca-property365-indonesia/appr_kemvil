@@ -66,7 +66,7 @@ async function bootstrap(): Promise<void> {
     app
       .getHttpAdapter()
       .getInstance()
-      .get(['/docs', '/docs/*', '/docs-json', '/docs-yaml'], (_req: any, res: any) => res.redirect('/'));
+      .get(['/docs', '/docs/*splat', '/docs-json', '/docs-yaml'], (_req: any, res: any) => res.redirect('/'));
   }
 
   const port = config.get<number>('app.port') ?? 3000;
