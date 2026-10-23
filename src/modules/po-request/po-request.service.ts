@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TokenService } from '../../common/crypto/token.service';
-import { DatabaseService } from '../../common/database/database.service';
+import { DatabaseService, ProcedureResult } from '../../common/database/database.service';
 import { FormatHelper } from '../../common/helpers/format.helper';
-import { redactPayload } from '../../common/helpers/redact.helper';
+import { maskEmail, redactPayload } from '../../common/helpers/redact.helper';
 import { AppLoggerService } from '../../common/logger/app-logger.service';
 import { ApprovalMailService } from '../../common/mail/approval-mail.service';
 import { ViewService } from '../../common/view/view.service';
@@ -63,6 +63,16 @@ export class PoRequestService {
 
   /** POST /api/maildata - body JSON dari SP. Balasan teks dibaca SP sebagai penanda sukses. */
   async send(body: Record<string, any>): Promise<string> {
+    this.logger.transaction('TERIMA_MAILDATA', 'MULAI', `${body.module ?? 'PoRequest'} ${LABEL} No. ${text(body.doc_no)}`, {
+      module: body.module,
+      entity_cd: text(body.entity_cd),
+      doc_no: text(body.doc_no),
+      level_no: text(body.level_no),
+      user_id: text(body.user_id),
+      status: body.status,
+      email_addr: maskEmail(body.email_addr),
+    });
+
     if (body.module === 'PoRequestFeedback') {
       return this.sendFeedback(body);
     }
@@ -116,11 +126,20 @@ export class PoRequestService {
         entityName: payload.entity_name,
         logLabel: `Email ${LABEL}`,
         docNo: payload.doc_no,
+        trxAction: 'EMAIL_APPROVAL',
+        logContext: { level_no: payload.level_no, user_id: payload.user_id },
       });
 
       return result.message;
     } catch (err: any) {
+      // Gagal sebelum email dikirim (mis. enkripsi token); kegagalan SMTP sudah dicatat sendGuarded().
       this.logger.channel('sendmail').error(`Gagal mengirim email: ${err?.message ?? err}`);
+      this.logger.transaction('EMAIL_APPROVAL', 'GAGAL', `${LABEL} No. ${payload.doc_no}: ${err?.message ?? err}`, {
+        entity_cd: payload.entity_cd,
+        doc_no: payload.doc_no,
+        level_no: payload.level_no,
+        user_id: payload.user_id,
+      });
       return `Gagal mengirim email: ${err?.message ?? err}`;
     }
   }
@@ -133,8 +152,15 @@ export class PoRequestService {
     const status = text(body.status).toUpperCase();
     const option = STATUS[status];
     const docNo = text(body.doc_no);
+    const trxContext = {
+      entity_cd: text(body.entity_cd),
+      doc_no: docNo,
+      status,
+      level_no: text(body.level_no),
+    };
     if (!option) {
       this.logger.channel('sendmail').error(`Feedback ${LABEL} ${docNo}: status "${body.status}" tidak dikenal`);
+      this.logger.transaction('EMAIL_FEEDBACK', 'GAGAL', `${LABEL} No. ${docNo}: status "${body.status}" tidak dikenal`, trxContext);
       return `Status feedback tidak dikenal: ${body.status}`;
     }
 
@@ -166,11 +192,14 @@ export class PoRequestService {
         entityName: dataArray.entity_name,
         logLabel: `Email Feedback ${LABEL}`,
         docNo,
+        trxAction: 'EMAIL_FEEDBACK',
+        logContext: { status, level_no: trxContext.level_no },
       });
 
       return result.message;
     } catch (err: any) {
       this.logger.channel('sendmail').error(`Gagal mengirim feedback: ${err?.message ?? err}`);
+      this.logger.transaction('EMAIL_FEEDBACK', 'GAGAL', `${LABEL} No. ${docNo}: ${err?.message ?? err}`, trxContext);
       return `Gagal mengirim email: ${err?.message ?? err}`;
     }
   }
@@ -178,18 +207,28 @@ export class PoRequestService {
   /** GET /api/porequest/{status}/{token} - halaman konfirmasi + kolom alasan. */
   async confirm(status: string, encrypt: string): Promise<string> {
     const option = STATUS[String(status ?? '').toUpperCase()];
-    if (!option) return this.message(`Unknown action "${status}"`);
+    if (!option) {
+      this.logger.transaction('KONFIRMASI', 'DITOLAK', `action "${status}" tidak dikenal`, { status });
+      return this.message(`Unknown action "${status}"`);
+    }
 
+    let data: ApprovalToken | undefined;
     try {
-      const data = await this.token.decrypt<ApprovalToken>(encrypt);
+      data = await this.token.decrypt<ApprovalToken>(encrypt);
       this.logger.channel('daily').info(`Decrypted data: ${JSON.stringify(redactPayload(data))}`);
 
-      const blocked = await this.checkPending(data, status);
+      const blocked = await this.checkPending(data, status, 'KONFIRMASI');
       if (blocked) return blocked;
 
       this.logger
         .channel(AUDIT_CHANNEL)
         .info(`AKSES halaman konfirmasi ${option.button} ${LABEL} No. ${data.doc_no}`, auditContext(data, status));
+      this.logger.transaction(
+        'KONFIRMASI',
+        'SUKSES',
+        `halaman ${option.button} ${LABEL} No. ${data.doc_no}`,
+        auditContext(data, status),
+      );
 
       return this.view.render('email.porequest.confirm', {
         status: String(status).toUpperCase(),
@@ -202,6 +241,13 @@ export class PoRequestService {
       });
     } catch (err: any) {
       this.logger.channel('daily').error(`confirm porequest gagal: ${err?.message ?? err}`);
+      // data kosong berarti token tidak dapat dibaca (rusak / kedaluwarsa).
+      this.logger.transaction(
+        'KONFIRMASI',
+        'GAGAL',
+        `${data ? `${LABEL} No. ${data.doc_no}` : 'token tidak valid'}: ${err?.message ?? err}`,
+        data ? auditContext(data, status) : { status },
+      );
       return this.message(err?.message ?? String(err));
     }
   }
@@ -210,17 +256,32 @@ export class PoRequestService {
   async execute(body: Record<string, any>): Promise<string> {
     const status = String(body.status ?? '').toUpperCase();
     const option = STATUS[status];
-    if (!option) return this.message(`Unknown action "${body.status}"`);
+    if (!option) {
+      this.logger.transaction('APPROVAL', 'DITOLAK', `action "${body.status}" tidak dikenal`, { status: body.status });
+      return this.message(`Unknown action "${body.status}"`);
+    }
 
     let data: ApprovalToken;
     try {
       data = await this.token.decrypt<ApprovalToken>(String(body.encrypt ?? ''));
     } catch (err: any) {
       this.logger.channel('daily').error(`execute porequest gagal: ${err?.message ?? err}`);
+      this.logger.transaction('APPROVAL', 'GAGAL', `token tidak valid: ${err?.message ?? err}`, { status });
       return this.message(err?.message ?? String(err));
     }
 
-    const blocked = await this.checkPending(data, status);
+    let blocked: string | null;
+    try {
+      blocked = await this.checkPending(data, status, 'APPROVAL');
+    } catch (err: any) {
+      this.logger.transaction(
+        'APPROVAL',
+        'GAGAL',
+        `cek status ${LABEL} No. ${data.doc_no}: ${err?.message ?? err}`,
+        auditContext(data, status),
+      );
+      throw err;
+    }
     if (blocked) return blocked;
 
     const audit = this.logger.channel(AUDIT_CHANNEL);
@@ -230,9 +291,11 @@ export class PoRequestService {
     const started = Date.now();
 
     audit.info(`MULAI ${option.done} ${LABEL} No. ${data.doc_no}`, context);
+    this.logger.transaction('APPROVAL', 'MULAI', `${option.done} ${LABEL} No. ${data.doc_no}`, { ...context, reason });
 
+    let result: ProcedureResult;
     try {
-      await this.db.execProcedureDetailed(PROCEDURE, [
+      result = await this.db.execProcedureDetailed(PROCEDURE, [
         data.entity_cd,
         data.project_no,
         data.doc_no,
@@ -249,6 +312,11 @@ export class PoRequestService {
         ...context,
         durationMs: Date.now() - started,
       });
+      this.logger.transaction('APPROVAL', 'GAGAL', `${option.done} ${LABEL} No. ${data.doc_no}: ${message}`, {
+        ...context,
+        reason,
+        durationMs: Date.now() - started,
+      });
       return this.message(`You Failed to ${option.button} the ${LABEL} No. ${data.doc_no}`, {
         notif: `Fail to ${option.button} !`,
         entity_name: data.entity_name,
@@ -257,6 +325,13 @@ export class PoRequestService {
 
     audit.info(`SUKSES ${option.done} ${LABEL} No. ${data.doc_no}`, {
       ...context,
+      durationMs: Date.now() - started,
+    });
+    this.logger.transaction('APPROVAL', 'SUKSES', `${option.done} ${LABEL} No. ${data.doc_no}`, {
+      ...context,
+      reason,
+      returnCode: result.returnCode,
+      rowsAffected: result.rowsAffected,
       durationMs: Date.now() - started,
     });
 
@@ -271,7 +346,11 @@ export class PoRequestService {
    * Link hanya berlaku selama baris approver masih 'O' (giliran approver ini).
    * Mengembalikan halaman penolakan, atau null bila boleh lanjut.
    */
-  private async checkPending(data: ApprovalToken, status: string): Promise<string | null> {
+  private async checkPending(
+    data: ApprovalToken,
+    status: string,
+    action: 'KONFIRMASI' | 'APPROVAL',
+  ): Promise<string | null> {
     const row = await this.db.first<{ status: string }>(
       `SELECT TOP 1 status FROM ${APPROVAL_TABLE}
        WHERE entity_cd = ? AND doc_no = ? AND level_no = ? AND user_id = ?
@@ -290,6 +369,10 @@ export class PoRequestService {
     this.logger
       .channel(AUDIT_CHANNEL)
       .warn(`DITOLAK (${row ? `status ${row.status}` : 'tidak ada'}) ${LABEL} No. ${data.doc_no}`, auditContext(data, status));
+    this.logger.transaction(action, 'DITOLAK', `${LABEL} No. ${data.doc_no}: ${reason}`, {
+      ...auditContext(data, status),
+      status_saat_ini: row?.status ?? null,
+    });
 
     return this.message(reason, { image: 'double_approve.png', entity_name: data.entity_name });
   }
