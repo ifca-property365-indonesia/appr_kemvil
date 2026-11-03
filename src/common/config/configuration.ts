@@ -1,3 +1,5 @@
+import type { AttachmentConfig } from '../helpers/attachment.helper';
+
 /**
  * Padanan dari config/app.php, config/database.php, config/mail.php dan config/logging.php
  * pada project Laravel `approval_befa`.
@@ -87,12 +89,11 @@ export interface AppConfig {
     password: string;
     baseDir: string;
   };
-  /** Link attachment PR: `{url}/{LIVE|TRAIN}/po_pr_attach/{file_attachment}`. */
-  attachment: {
-    url: string;
-    /** Folder dari STATUS_PDF: live -> LIVE, train -> TRAIN. */
-    folder: 'LIVE' | 'TRAIN';
-  };
+  /**
+   * Link attachment semua module: `{url}/{LIVE|TRAIN}/{folder module}/{file_attachment}`.
+   * url = URL_PDF, folder = STATUS_PDF (live -> LIVE, train -> TRAIN).
+   */
+  attachment: AttachmentConfig;
 }
 
 export default (): AppConfig => ({
