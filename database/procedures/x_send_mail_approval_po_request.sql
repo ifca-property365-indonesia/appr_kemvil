@@ -33,10 +33,8 @@ DECLARE @rt_level			int = ISNULL(TRY_CAST(@rt_level_no AS int), 0)
 DECLARE @f_type				varchar(1) = 'C'	-- type approver di po_authorized_person
 DECLARE @f_api_mail			varchar(max)
 DECLARE @f_entity_name		varchar(255)
-DECLARE @f_url_file			varchar(max)
-DECLARE @f_file_name		varchar(max)
+DECLARE @f_file_attachment	varchar(max)
 DECLARE @f_approve_exist	varchar(max) = 'EMPTY'
-DECLARE @sql				nvarchar(max)
 DECLARE @err_msg			nvarchar(2048)
 DECLARE @msg				nvarchar(2047)
 DECLARE @rows				int
@@ -266,42 +264,26 @@ SELECT @f_entity_name = entity_name
 FROM mgr.cf_entity (NOLOCK) WHERE entity_cd = @rt_entity_cd
 
 -- ---------------- Attachment ----------------
--- EMPTY kalau: tabel/kolom tidak ada, tidak ada baris, atau url bukan http.
--- Pakai dynamic SQL supaya SP tetap bisa compile walau kolom belum ada.
-IF COL_LENGTH('mgr.po_pr_attachment', 'url_fin') IS NOT NULL
-BEGIN
-	SET @sql = N'
-		SELECT @url_file  = STRING_AGG(CAST(LTRIM(RTRIM(url_fin)) AS varchar(max)), ''; '')
-								WITHIN GROUP (ORDER BY url_fin),
-			   @file_name = STRING_AGG(CAST(' +
-			CASE WHEN COL_LENGTH('mgr.po_pr_attachment', 'url_fin_descs') IS NOT NULL
-				 THEN N'ISNULL(NULLIF(LTRIM(RTRIM(url_fin_descs)), ''''), ''EMPTY'')'
-				 ELSE N'''EMPTY''' END + N' AS varchar(max)), ''; '')
-								WITHIN GROUP (ORDER BY url_fin)
-		FROM mgr.po_pr_attachment WITH (NOLOCK)
-		WHERE entity_cd = @entity_cd AND project_no = @project_no AND doc_no = @doc_no
-		  AND LTRIM(url_fin) LIKE ''http%'''
+-- Hanya nama file (file_attachment) yang dikirim. URL lengkap disusun aplikasi dari .env:
+--   URL_PDF/{LIVE|TRAIN sesuai STATUS_PDF}/po_pr_attach/{file_attachment}
+-- EMPTY kalau tidak ada baris / nama file kosong.
+BEGIN TRY
+	SELECT @f_file_attachment = STRING_AGG(CAST(LTRIM(RTRIM(file_attachment)) AS varchar(max)), '; ')
+									WITHIN GROUP (ORDER BY file_attachment)
+	FROM mgr.po_pr_attachment WITH (NOLOCK)
+	WHERE entity_cd = @rt_entity_cd AND project_no = @rt_project_no AND doc_no = @rt_doc_no
+	  AND NULLIF(LTRIM(RTRIM(file_attachment)), '') IS NOT NULL
+END TRY
+BEGIN CATCH
+	IF @debug = 1
+	BEGIN
+		SET @msg = 'Attachment query error: ' + ERROR_MESSAGE()
+		RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
+	END
+	SET @f_file_attachment = NULL
+END CATCH
 
-	BEGIN TRY
-		EXEC sp_executesql @sql,
-			N'@entity_cd varchar(4), @project_no varchar(20), @doc_no varchar(30),
-			  @url_file varchar(max) OUTPUT, @file_name varchar(max) OUTPUT',
-			@rt_entity_cd, @rt_project_no, @rt_doc_no, @f_url_file OUTPUT, @f_file_name OUTPUT
-	END TRY
-	BEGIN CATCH
-		IF @debug = 1
-		BEGIN
-			SET @msg = 'Attachment query error: ' + ERROR_MESSAGE()
-			RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
-		END
-		SELECT @f_url_file = NULL, @f_file_name = NULL
-	END CATCH
-END
-ELSE IF @debug = 1
-	RAISERROR('Kolom/tabel po_pr_attachment.url_fin tidak ada -> EMPTY', 0, 1) WITH NOWAIT
-
-SELECT @f_url_file  = ISNULL(NULLIF(@f_url_file, ''), 'EMPTY'),
-	   @f_file_name = ISNULL(NULLIF(@f_file_name, ''), 'EMPTY')
+SET @f_file_attachment = ISNULL(NULLIF(@f_file_attachment, ''), 'EMPTY')
 
 -- ---------------- Approver sebelumnya ----------------
 IF @rt_level > 0
@@ -316,7 +298,7 @@ IF @debug = 1
 BEGIN
 	SET @msg = CONCAT('URL=', @URL, ' | entity_name=', @f_entity_name, ' | approve_exist=', @f_approve_exist)
 	RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
-	SET @msg = LEFT(CONCAT('url_file=', @f_url_file, ' | file_name=', @f_file_name), 2047)
+	SET @msg = LEFT(CONCAT('file_attachment=', @f_file_attachment), 2047)
 	RAISERROR('%s', 0, 1, @msg) WITH NOWAIT
 END
 
@@ -369,8 +351,7 @@ BEGIN
 			ISNULL(r.user_id, '')					AS user_id,
 			ISNULL(r.sender, '')					AS sender,
 			ISNULL(r.sender_addr, '')				AS sender_addr,
-			@f_url_file								AS url_file,
-			@f_file_name							AS file_name,
+			@f_file_attachment						AS file_attachment,
 			ISNULL(@f_entity_name, '')				AS entity_name,
 			ISNULL(r.email_addr, '')				AS email_addr,
 			ISNULL(r.descs, '')						AS descs,

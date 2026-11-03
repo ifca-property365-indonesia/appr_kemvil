@@ -87,6 +87,12 @@ export interface AppConfig {
     password: string;
     baseDir: string;
   };
+  /** Link attachment PR: `{url}/{LIVE|TRAIN}/po_pr_attach/{file_attachment}`. */
+  attachment: {
+    url: string;
+    /** Folder dari STATUS_PDF: live -> LIVE, train -> TRAIN. */
+    folder: 'LIVE' | 'TRAIN';
+  };
 }
 
 export default (): AppConfig => ({
@@ -150,5 +156,10 @@ export default (): AppConfig => ({
     username: str(process.env.FTP_USERNAME, 'befa'),
     password: str(process.env.FTP_PASSWORD, 'befa'),
     baseDir: str(process.env.FTP_BASE_DIR, 'ifca-att'),
+  },
+  attachment: {
+    url: str(process.env.URL_PDF, 'https://kemvil.property365.co.id:4112/FTP').replace(/\/+$/, ''),
+    // Selain `train` dianggap live supaya salah ketik tidak mengarah ke data TRAIN.
+    folder: str(process.env.STATUS_PDF, 'live').toLowerCase() === 'train' ? 'TRAIN' : 'LIVE',
   },
 });

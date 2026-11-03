@@ -98,8 +98,7 @@ export class PoRequestService {
       user_name: text(body.user_name),
       doc_no: payload.doc_no,
       descs: text(body.descs),
-      url_file: FormatHelper.explode('; ', body.url_file ?? 'EMPTY'),
-      file_name: FormatHelper.explode('; ', body.file_name ?? 'EMPTY'),
+      ...this.attachments(body),
       approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
       clarify_user: text(body.clarify_user),
       clarify_email: text(body.clarify_email),
@@ -142,6 +141,30 @@ export class PoRequestService {
       });
       return `Gagal mengirim email: ${err?.message ?? err}`;
     }
+  }
+
+  /**
+   * Link attachment untuk email approval.
+   *
+   * SP mengirim `file_attachment` (nama file dari mgr.po_pr_attachment, dipisah `; `);
+   * URL disusun di sini: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file_attachment}.
+   * Body tanpa `file_attachment` (SP versi lama) tetap memakai `url_file` apa adanya.
+   */
+  private attachments(body: Record<string, any>): { url_file: string[]; file_name: string[] } {
+    if (body.file_attachment === undefined) {
+      return {
+        url_file: FormatHelper.explode('; ', body.url_file ?? 'EMPTY'),
+        file_name: FormatHelper.explode('; ', body.file_name ?? 'EMPTY'),
+      };
+    }
+
+    const files = FormatHelper.cleanList(body.file_attachment);
+    const { url, folder } = this.config.get<{ url: string; folder: string }>('attachment');
+
+    return {
+      url_file: files.map((file) => `${url}/${folder}/po_pr_attach/${encodeURIComponent(file)}`),
+      file_name: files,
+    };
   }
 
   /**
