@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TokenService } from '../../common/crypto/token.service';
 import { DatabaseService, ProcedureResult } from '../../common/database/database.service';
+import { AttachmentConfig, attachmentLinks } from '../../common/helpers/attachment.helper';
 import { FormatHelper } from '../../common/helpers/format.helper';
 import { maskEmail, redactPayload } from '../../common/helpers/redact.helper';
 import { AppLoggerService } from '../../common/logger/app-logger.service';
@@ -11,6 +12,8 @@ import { ViewService } from '../../common/view/view.service';
 /** Stored procedure approval PR (lihat mgr.x_send_mail_approval_po_request). */
 const PROCEDURE = 'mgr.x_send_mail_approval_po_request';
 const APPROVAL_TABLE = 'mgr.po_authorized_person';
+/** Folder attachment PR di server file: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file}. */
+const ATTACHMENT_DIR = 'po_pr_attach';
 const LABEL = 'Purchase Requisition';
 const AUDIT_CHANNEL = 'approval';
 
@@ -98,7 +101,7 @@ export class PoRequestService {
       user_name: text(body.user_name),
       doc_no: payload.doc_no,
       descs: text(body.descs),
-      ...this.attachments(body),
+      ...attachmentLinks(body, ATTACHMENT_DIR, this.config.get<AttachmentConfig>('attachment')),
       approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
       clarify_user: text(body.clarify_user),
       clarify_email: text(body.clarify_email),
@@ -141,30 +144,6 @@ export class PoRequestService {
       });
       return `Gagal mengirim email: ${err?.message ?? err}`;
     }
-  }
-
-  /**
-   * Link attachment untuk email approval.
-   *
-   * SP mengirim `file_attachment` (nama file dari mgr.po_pr_attachment, dipisah `; `);
-   * URL disusun di sini: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file_attachment}.
-   * Body tanpa `file_attachment` (SP versi lama) tetap memakai `url_file` apa adanya.
-   */
-  private attachments(body: Record<string, any>): { url_file: string[]; file_name: string[] } {
-    if (body.file_attachment === undefined) {
-      return {
-        url_file: FormatHelper.explode('; ', body.url_file ?? 'EMPTY'),
-        file_name: FormatHelper.explode('; ', body.file_name ?? 'EMPTY'),
-      };
-    }
-
-    const files = FormatHelper.cleanList(body.file_attachment);
-    const { url, folder } = this.config.get<{ url: string; folder: string }>('attachment');
-
-    return {
-      url_file: files.map((file) => `${url}/${folder}/po_pr_attach/${encodeURIComponent(file)}`),
-      file_name: files,
-    };
   }
 
   /**
