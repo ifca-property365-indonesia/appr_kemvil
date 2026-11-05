@@ -178,6 +178,7 @@ export class PoRequestService {
       reason: text(body.reason),
       sender: text(body.sender),
       sender_addr: text(body.sender_addr),
+      ...(await this.attachment.links(ATTACHMENT_DIR, trxContext.entity_cd, docNo)),
       approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
       subject: `(${option.done}) ${LABEL} No. ${docNo}`,
     };
