@@ -39,6 +39,7 @@ DECLARE @f_sender			varchar(max)
 DECLARE @f_sender_addr		varchar(max)
 DECLARE @f_approved_date	datetime
 DECLARE @f_approve_exist	varchar(max)
+DECLARE @f_approve_detail	nvarchar(max)
 DECLARE @f_entity_name		varchar(255)
 DECLARE @msg				nvarchar(2047)
 DECLARE @p					int
@@ -65,7 +66,8 @@ END
 
 -- URL aplikasi approval (tanpa slash di akhir) - samakan dengan SP x_send_mail_approval_po_request
 --SELECT @f_api_mail = api_mail FROM mgr.ar_spec (NOLOCK)
-SET @f_api_mail = 'http://10.10.0.25:7354'
+--SET @f_api_mail = 'http://10.10.0.25:7354'
+SET @f_api_mail = 'https://ifcademo.property365.co.id:7354'
 SET @URL = ISNULL(@f_api_mail, '') + '/api/maildata'
 
 -- ---------------- Penerima: pembuat PR ----------------
@@ -111,6 +113,19 @@ WHERE a.entity_cd = @rt_entity_cd AND a.doc_no = @rt_doc_no
   AND a.type = @f_type AND a.module = @rt_module AND a.trx_type = @rt_trx_type
   AND a.status = 'A'
 
+-- Nama + note per level. Array JSON, bukan dipisah '; ', karena note berupa teks bebas.
+SET @f_approve_detail = (
+	SELECT ISNULL(u.description, a.user_id) AS name,
+		   ISNULL(NULLIF(LTRIM(RTRIM(a.note_approval)), ''), 'no note') AS note
+	FROM mgr.po_authorized_person a
+	LEFT JOIN mgr.security_users u (NOLOCK) ON u.name = a.user_id
+	WHERE a.entity_cd = @rt_entity_cd AND a.doc_no = @rt_doc_no
+	  AND a.type = @f_type AND a.module = @rt_module AND a.trx_type = @rt_trx_type
+	  AND a.status = 'A'
+	ORDER BY a.level_no
+	FOR JSON PATH
+)
+
 SELECT @f_entity_name = entity_name
 FROM mgr.cf_entity (NOLOCK) WHERE entity_cd = @rt_entity_cd
 
@@ -132,6 +147,7 @@ SET @Body = (
 		ISNULL(@f_sender, '')						AS sender,
 		ISNULL(@f_sender_addr, '')					AS sender_addr,
 		ISNULL(@f_approve_exist, 'EMPTY')			AS approve_exist,
+		JSON_QUERY(@f_approve_detail)				AS approve_detail,
 		-- penanda unik per keputusan, supaya feedback revisi berikutnya di hari yang sama tetap terkirim
 		ISNULL(FORMAT(@f_approved_date, 'yyyyMMddHHmmss'), '')	AS feedback_key
 	FOR JSON PATH, WITHOUT_ARRAY_WRAPPER

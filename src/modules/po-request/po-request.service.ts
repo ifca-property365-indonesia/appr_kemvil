@@ -178,7 +178,8 @@ export class PoRequestService {
       reason: text(body.reason),
       sender: text(body.sender),
       sender_addr: text(body.sender_addr),
-      approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
+      ...(await this.attachment.links(ATTACHMENT_DIR, trxContext.entity_cd, docNo)),
+      approvers: approverList(body),
       subject: `(${option.done}) ${LABEL} No. ${docNo}`,
     };
 
@@ -396,6 +397,18 @@ export class PoRequestService {
 
 function text(value: any): string {
   return value === null || value === undefined ? '' : String(value).trim();
+}
+
+/**
+ * Daftar approver untuk email feedback. SP mengirim `approve_detail` (nama + note per level);
+ * body tanpa field itu (SP versi lama) memakai `approve_exist`, yang hanya berisi nama.
+ */
+function approverList(body: Record<string, any>): Array<{ name: string; note: string }> {
+  if (Array.isArray(body.approve_detail)) {
+    return body.approve_detail.map((item) => ({ name: text(item?.name), note: text(item?.note) }));
+  }
+
+  return FormatHelper.cleanList(body.approve_exist).map((name) => ({ name, note: '' }));
 }
 
 /** Bagian nama file penanda anti double-send: hanya karakter aman untuk nama file. */

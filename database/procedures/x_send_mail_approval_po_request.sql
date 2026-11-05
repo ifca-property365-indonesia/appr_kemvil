@@ -1,3 +1,4 @@
+use kemvill_test
 /*
  * mgr.x_send_mail_approval_po_request
  *
@@ -256,7 +257,8 @@ END
 -- URL aplikasi approval (tanpa slash di akhir), contoh: https://approval.kemvil.co.id
 --SELECT @f_api_mail = api_mail FROM mgr.ar_spec (NOLOCK)
 -- SQL Server & aplikasi satu jaringan -> HTTP langsung ke Node (port 7353 tidak pakai SSL)
-SET @f_api_mail = 'http://10.10.0.25:7354'
+--SET @f_api_mail = 'http://10.10.0.25:7354'
+SET @f_api_mail = 'https://ifcademo.property365.co.id:7354'
 SET @URL = ISNULL(@f_api_mail, '') + '/api/maildata'
 
 SELECT @f_entity_name = entity_name
