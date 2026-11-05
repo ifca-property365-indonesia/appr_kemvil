@@ -72,14 +72,11 @@
                                         </p>
                                     <% } %>
 
-                                    <% const approvers = dataArray['approvers']; %>
+                                    <% const approvers = dataArray['approve_list'].filter((a) => a && a !== 'EMPTY'); %>
                                     <% if (approvers.length > 0) { %>
                                         <p style="text-align:left; margin-bottom: 15px; color: #000000; font-size: 14px;">
                                             <span>This request has been approved by :</span><br>
-                                            <% approvers.forEach((a, i) => { %>
-                                                <%= i + 1 %>. <%= a.name %><br>
-                                                <% if (a.note) { %><span style="display:inline-block; padding-left:16px;">Note : <%= a.note %></span><br><% } %>
-                                            <% }) %>
+                                            <% approvers.forEach((a, i) => { %><%= i + 1 %>. <%= a %><br><% }) %>
                                         </p>
                                     <% } %>
 
