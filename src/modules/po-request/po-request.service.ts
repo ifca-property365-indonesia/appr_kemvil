@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AttachmentService } from '../../common/attachment/attachment.service';
 import { TokenService } from '../../common/crypto/token.service';
 import { DatabaseService, ProcedureResult } from '../../common/database/database.service';
-import { AttachmentConfig, attachmentLinks } from '../../common/helpers/attachment.helper';
 import { FormatHelper } from '../../common/helpers/format.helper';
 import { maskEmail, redactPayload } from '../../common/helpers/redact.helper';
 import { AppLoggerService } from '../../common/logger/app-logger.service';
@@ -12,7 +12,7 @@ import { ViewService } from '../../common/view/view.service';
 /** Stored procedure approval PR (lihat mgr.x_send_mail_approval_po_request). */
 const PROCEDURE = 'mgr.x_send_mail_approval_po_request';
 const APPROVAL_TABLE = 'mgr.po_authorized_person';
-/** Folder attachment PR di server file: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file}. */
+/** Folder attachment PR di FTP; link: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file}. */
 const ATTACHMENT_DIR = 'po_pr_attach';
 const LABEL = 'Purchase Requisition';
 const AUDIT_CHANNEL = 'approval';
@@ -62,6 +62,7 @@ export class PoRequestService {
     private readonly approvalMail: ApprovalMailService,
     private readonly view: ViewService,
     private readonly logger: AppLoggerService,
+    private readonly attachment: AttachmentService,
   ) {}
 
   /** POST /api/maildata - body JSON dari SP. Balasan teks dibaca SP sebagai penanda sukses. */
@@ -101,7 +102,7 @@ export class PoRequestService {
       user_name: text(body.user_name),
       doc_no: payload.doc_no,
       descs: text(body.descs),
-      ...attachmentLinks(body, ATTACHMENT_DIR, this.config.get<AttachmentConfig>('attachment')),
+      ...(await this.attachment.links(ATTACHMENT_DIR, payload.entity_cd, payload.doc_no)),
       approve_list: FormatHelper.explode('; ', body.approve_exist ?? 'EMPTY'),
       clarify_user: text(body.clarify_user),
       clarify_email: text(body.clarify_email),

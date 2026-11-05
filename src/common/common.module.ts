@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { AttachmentService } from './attachment/attachment.service';
 import { MailCacheService } from './cache/mail-cache.service';
 import { TokenService } from './crypto/token.service';
 import { DatabaseService } from './database/database.service';
@@ -15,6 +16,7 @@ import { ViewService } from './view/view.service';
 @Global()
 @Module({
   providers: [
+    AttachmentService,
     AppLoggerService,
     DatabaseService,
     ViewService,
@@ -25,6 +27,7 @@ import { ViewService } from './view/view.service';
     TokenService,
   ],
   exports: [
+    AttachmentService,
     AppLoggerService,
     DatabaseService,
     ViewService,
