@@ -34,6 +34,7 @@ const TRANSACTION_CHANNEL = 'transaction';
  *   KONFIRMASI      - approver membuka link di email
  *   APPROVAL        - approver submit Approve/Revise/Reject
  *   EXEC_SP         - eksekusi stored procedure
+ *   FTP_ATTACHMENT  - membaca daftar attachment dokumen dari FTP
  */
 export type TransactionAction =
   | 'TERIMA_MAILDATA'
@@ -42,7 +43,8 @@ export type TransactionAction =
   | 'SMTP'
   | 'KONFIRMASI'
   | 'APPROVAL'
-  | 'EXEC_SP';
+  | 'EXEC_SP'
+  | 'FTP_ATTACHMENT';
 
 /** LEWAT = sengaja tidak diproses (sudah terkirim, tanpa penerima); DITOLAK = link tidak berlaku. */
 export type TransactionStage = 'MULAI' | 'SUKSES' | 'GAGAL' | 'LEWAT' | 'DITOLAK';

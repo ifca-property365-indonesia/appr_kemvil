@@ -1,5 +1,3 @@
-import type { AttachmentConfig } from '../helpers/attachment.helper';
-
 /**
  * Padanan dari config/app.php, config/database.php, config/mail.php dan config/logging.php
  * pada project Laravel `approval_befa`.
@@ -29,6 +27,10 @@ const bool = (value: string | undefined, fallback: boolean): boolean => {
   if (raw === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(raw);
 };
+
+/** Selain `train` dianggap live supaya salah ketik tidak mengarah ke data TRAIN. */
+const statusPdf = (): 'live' | 'train' =>
+  str(process.env.STATUS_PDF, 'live').toLowerCase() === 'train' ? 'train' : 'live';
 
 export interface AppConfig {
   app: {
@@ -85,15 +87,19 @@ export interface AppConfig {
   ftp: {
     host: string;
     port: number;
+    /** FTP_USERNAME + STATUS_PDF: kemang_ -> kemang_live / kemang_train. */
     username: string;
     password: string;
     baseDir: string;
   };
   /**
-   * Link attachment semua module: `{url}/{LIVE|TRAIN}/{folder module}/{file_attachment}`.
+   * Link attachment semua module: `{url}/{LIVE|TRAIN}/{folder module}/{nama file}`.
    * url = URL_PDF, folder = STATUS_PDF (live -> LIVE, train -> TRAIN).
    */
-  attachment: AttachmentConfig;
+  attachment: {
+    url: string;
+    folder: 'LIVE' | 'TRAIN';
+  };
 }
 
 export default (): AppConfig => ({
@@ -152,15 +158,14 @@ export default (): AppConfig => ({
     ttlDays: num(process.env.URL_TOKEN_TTL_DAYS, 0),
   },
   ftp: {
-    host: str(process.env.FTP_HOST, 'uat.ifca.co.id'),
-    port: num(process.env.FTP_PORT, 2111),
-    username: str(process.env.FTP_USERNAME, 'befa'),
+    host: str(process.env.FTP_HOST, 'kemvil.property365.co.id'),
+    port: num(process.env.FTP_PORT, 21112),
+    username: `${str(process.env.FTP_USERNAME, 'kemang_').replace(/(live|train)$/i, '')}${statusPdf()}`,
     password: str(process.env.FTP_PASSWORD, 'befa'),
     baseDir: str(process.env.FTP_BASE_DIR, 'ifca-att'),
   },
   attachment: {
     url: str(process.env.URL_PDF, 'https://kemvil.property365.co.id:4112/FTP').replace(/\/+$/, ''),
-    // Selain `train` dianggap live supaya salah ketik tidak mengarah ke data TRAIN.
-    folder: str(process.env.STATUS_PDF, 'live').toLowerCase() === 'train' ? 'TRAIN' : 'LIVE',
+    folder: statusPdf() === 'train' ? 'TRAIN' : 'LIVE',
   },
 });

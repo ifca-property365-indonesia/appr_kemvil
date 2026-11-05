@@ -34,7 +34,6 @@ export class PoRequestController {
         user_name: 'Approver',
         entity_name: 'PT CONTOH',
         descs: 'Keterangan PR',
-        file_attachment: 'PR26100033_1.pdf; PR26100033_2.pdf',
         approve_exist: 'EMPTY',
         clarify_user: 'Pembuat PR',
         clarify_email: 'maker@example.com',
