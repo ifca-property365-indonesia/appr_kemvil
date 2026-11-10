@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Approval Pending - Approval KEMVIL</title>
+    <style>
+        :root {
+            --bg: #f5f6f8; --card: #ffffff; --text: #1f2933; --muted: #6b7280; --line: #e5e7eb;
+            --brand: #026735; --brand-soft: #e7f3ec; --warn: #b45309; --warn-soft: #fef3c7;
+            --err: #b91c1c; --err-soft: #fee2e2;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+        .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 16px; }
+        h1 { margin: 0 0 4px; font-size: 22px; color: var(--brand); }
+        .sub { margin: 0 0 20px; color: var(--muted); }
+        .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .bar label { font-weight: bold; }
+        .bar input { flex: 1 1 240px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+        .bar .count { margin-left: auto; color: var(--muted); }
+        button { font: inherit; cursor: pointer; border-radius: 6px; padding: 8px 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+        button:focus-visible, input:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+        button.primary { background: var(--brand); border-color: var(--brand); color: #fff; white-space: nowrap; }
+        button:disabled { opacity: .6; cursor: default; }
+        .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+        th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); background: #fafbfc; }
+        tr:last-child td { border-bottom: 0; }
+        .doc { font-weight: bold; }
+        .small { font-size: 12px; color: var(--muted); }
+        .level { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-weight: bold; white-space: nowrap; }
+        .approver + .approver { margin-top: 8px; }
+        .result { margin-top: 6px; font-size: 12px; }
+        .result.ok { color: var(--brand); }
+        .result.fail { color: var(--err); }
+        .state { padding: 40px 16px; text-align: center; color: var(--muted); }
+        .state.error { color: var(--err); }
+        .descs { max-width: 280px; }
+        /* Layar kecil: tiap dokumen jadi kartu supaya tombol kirim ulang tidak tersembunyi di scroll samping. */
+        @media (max-width: 640px) {
+            .card { overflow: visible; background: transparent; border: 0; }
+            table, tbody, tr, td { display: block; width: 100%; }
+            thead { display: none; }
+            tr { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; }
+            td { border-bottom: 1px solid var(--line); padding: 10px 12px; }
+            td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-bottom: 4px; }
+            .descs { max-width: none; }
+            td button.primary { width: 100%; min-height: 44px; }
+            .bar .count { margin-left: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>Approval Pending</h1>
+    <p class="sub">Purchase Requisition yang masih menunggu approval. Hanya level yang sedang ditunggu yang ditampilkan.</p>
+
+    <div class="bar">
+        <label for="q">Cari</label>
+        <input id="q" type="search" placeholder="No. PR, keterangan, atau approver" autocomplete="off">
+        <button id="reload" type="button">Muat ulang</button>
+        <span class="count" id="count"></span>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead>
+            <tr>
+                <th>No. PR</th>
+                <th>Keterangan</th>
+                <th>Level</th>
+                <th>Menunggu approval dari</th>
+                <th><span class="small">Aksi</span></th>
+            </tr>
+            </thead>
+            <tbody id="rows">
+            <tr><td colspan="5" class="state">Memuat data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    (function () {
+        // Relatif ke root supaya mengikuti host & port yang sedang dibuka (lihat welcome.ejs).
+        var dataUrl = '/apprlist/data';
+        var sendUrl = '/apprlist/sendData';
+        var rowsEl = document.getElementById('rows');
+        var countEl = document.getElementById('count');
+        var qEl = document.getElementById('q');
+        var docs = [];
+
+        function esc(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        function fmtDate(iso, withTime) {
+            if (!iso) return '';
+            var d = new Date(iso);
+            var opts = withTime
+                ? { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+                : { day: '2-digit', month: 'short', year: 'numeric' };
+            return d.toLocaleString('id-ID', opts);
+        }
+
+        function message(text, cls) {
+            rowsEl.innerHTML = '<tr><td colspan="5" class="state ' + (cls || '') + '">' + esc(text) + '</td></tr>';
+        }
+
+        function render() {
+            var q = qEl.value.trim().toLowerCase();
+            var list = docs.filter(function (d) {
+                if (!q) return true;
+                var hay = [d.doc_no, d.descs, d.entity_name].concat(d.approvers.map(function (a) { return a.user_name + ' ' + a.user_id; }));
+                return hay.join(' ').toLowerCase().indexOf(q) !== -1;
+            });
+
+            countEl.textContent = list.length + ' dari ' + docs.length + ' dokumen';
+            if (docs.length === 0) return message('Tidak ada approval yang sedang menunggu.');
+            if (list.length === 0) return message('Tidak ada dokumen yang cocok dengan "' + qEl.value.trim() + '".');
+
+            rowsEl.innerHTML = list.map(function (d, i) {
+                var approvers = d.approvers.map(function (a) {
+                    return '<div class="approver"><div>' + esc(a.user_name) + ' <span class="small">(' + esc(a.user_id) + ')</span></div>'
+                        + '<div class="small">' + esc(a.email || 'email kosong') + '</div>'
+                        + '<div class="small">Terakhir dikirim: ' + (a.last_sent ? esc(fmtDate(a.last_sent, true)) : 'belum tercatat') + '</div></div>';
+                }).join('');
+                return '<tr>'
+                    + '<td><div class="doc">' + esc(d.doc_no) + '</div><div class="small">' + esc(d.entity_name || d.entity_cd) + '</div>'
+                    + '<div class="small">' + esc(fmtDate(d.request_date)) + '</div></td>'
+                    + '<td class="descs" data-label="Keterangan">' + esc(d.descs) + '</td>'
+                    + '<td data-label="Level"><span class="level">Level ' + esc(d.level_no) + ' dari ' + esc(d.total_level) + '</span></td>'
+                    + '<td data-label="Menunggu approval dari">' + approvers + '</td>'
+                    + '<td><button type="button" class="primary" data-i="' + docs.indexOf(d) + '">Kirim ulang email</button>'
+                    + '<div class="result" id="res-' + docs.indexOf(d) + '" role="status"></div></td>'
+                    + '</tr>';
+            }).join('');
+        }
+
+        function load() {
+            message('Memuat data...');
+            countEl.textContent = '';
+            fetch(dataUrl, { headers: { Accept: 'application/json' } })
+                .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                .then(function (data) { docs = Array.isArray(data) ? data : []; render(); })
+                .catch(function (e) { message('Data tidak dapat dimuat (' + e.message + '). Coba Muat ulang.', 'error'); });
+        }
+
+        rowsEl.addEventListener('click', function (ev) {
+            var btn = ev.target.closest('button[data-i]');
+            if (!btn) return;
+            var i = Number(btn.getAttribute('data-i'));
+            var d = docs[i];
+            var names = d.approvers.map(function (a) { return a.user_name; }).join(', ');
+            if (!confirm('Kirim ulang email approval ' + d.doc_no + ' (level ' + d.level_no + ') ke ' + names + '?')) return;
+
+            var res = document.getElementById('res-' + i);
+            btn.disabled = true;
+            btn.textContent = 'Mengirim...';
+            res.className = 'result';
+            res.textContent = '';
+
+            fetch(sendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ entity_cd: d.entity_cd, doc_no: d.doc_no })
+            })
+                .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                .then(function (out) {
+                    res.className = 'result ' + (out.ok ? 'ok' : 'fail');
+                    res.textContent = out.message + (out.ok ? '' : '. Coba kirim ulang lagi, atau cek log RESEND_APPROVAL.');
+                    if (out.ok) {
+                        var now = new Date().toISOString();
+                        d.approvers.forEach(function (a) { a.last_sent = now; });
+                    }
+                })
+                .catch(function (e) {
+                    res.className = 'result fail';
+                    res.textContent = 'Permintaan gagal (' + e.message + '). Coba kirim ulang lagi.';
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = 'Kirim ulang email';
+                });
+        });
+
+        qEl.addEventListener('input', render);
+        document.getElementById('reload').addEventListener('click', load);
+        load();
+    })();
+</script>
+</body>
+</html>

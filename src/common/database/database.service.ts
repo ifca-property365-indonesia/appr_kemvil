@@ -12,6 +12,8 @@ export interface ProcedureResult {
   returnCode: number | null;
   rowsAffected: number;
   durationMs: number;
+  /** Result set yang dikembalikan SP (tanpa result set return code internal). */
+  recordsets: any[][];
 }
 
 /**
@@ -203,7 +205,11 @@ export class DatabaseService implements OnModuleDestroy {
       // Return code bukan 0 tetap SUKSES (lihat catatan di atas); nilainya ada di meta.
       this.logger.transaction('EXEC_SP', 'SUKSES', procedure, { ...meta, params });
 
-      return { ok: true, returnCode, rowsAffected, durationMs };
+      const recordsets = ((result.recordsets ?? []) as any[][]).filter(
+        (rows) => !(Array.isArray(rows) && rows[0] && '__rc' in rows[0]),
+      );
+
+      return { ok: true, returnCode, rowsAffected, durationMs, recordsets };
     } catch (err: any) {
       const durationMs = Date.now() - started;
       const meta = { proc: procedure, params, durationMs };
