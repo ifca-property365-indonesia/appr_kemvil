@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { MailCacheService } from '../../common/cache/mail-cache.service';
 import { DatabaseService } from '../../common/database/database.service';
-import { maskEmail } from '../../common/helpers/redact.helper';
 import { AppLoggerService } from '../../common/logger/app-logger.service';
 
 /** SP yang sama dengan alur approval; level_no '0' = lewati update, hanya kirim email ke level 'O'. */
@@ -21,10 +20,8 @@ interface PendingRow {
   trx_type: string;
   module: string;
   level_no: number;
-  total_level: number;
   user_id: string;
   user_name: string | null;
-  email_addr: string | null;
   request_date: Date | null;
   descs: string | null;
 }
@@ -39,8 +36,7 @@ export interface PendingDocument {
   request_date: string | null;
   descs: string;
   level_no: number;
-  total_level: number;
-  approvers: Array<{ user_id: string; user_name: string; email: string; last_sent: string | null }>;
+  approvers: Array<{ user_id: string; user_name: string }>;
 }
 
 export interface ResendResult {
@@ -55,19 +51,13 @@ export interface ResendResult {
  */
 const PENDING_SQL = `
 SELECT a.entity_cd, e.entity_name, a.project_no, a.doc_no, a.trx_type, a.module,
-       a.level_no, lv.total_level, a.user_id, u.description AS user_name, u.email_add AS email_addr,
+       a.level_no, a.user_id, u.description AS user_name,
        h.request_date, COALESCE(h.descs, a.remarks) AS descs
 FROM mgr.po_authorized_person a WITH (NOLOCK)
 LEFT JOIN mgr.po_request_hd h WITH (NOLOCK)
        ON h.entity_cd = a.entity_cd AND h.request_no = a.doc_no AND h.request_trx_type = a.trx_type
 LEFT JOIN mgr.security_users u WITH (NOLOCK) ON u.name = a.user_id
 LEFT JOIN mgr.cf_entity e WITH (NOLOCK) ON e.entity_cd = a.entity_cd
-CROSS APPLY (
-    SELECT MAX(x.level_no) AS total_level
-    FROM mgr.po_authorized_person x WITH (NOLOCK)
-    WHERE x.entity_cd = a.entity_cd AND x.doc_no = a.doc_no
-      AND x.type = a.type AND x.module = a.module AND x.trx_type = a.trx_type
-) lv
 WHERE a.type = ? AND a.module = ? AND a.status = 'O'
   AND a.level_no = (SELECT MIN(l.level_no)
                     FROM mgr.po_authorized_person l WITH (NOLOCK)
@@ -113,23 +103,13 @@ export class ApprListService {
           request_date: row.request_date ? new Date(row.request_date).toISOString() : null,
           descs: text(row.descs),
           level_no: Number(row.level_no),
-          total_level: Number(row.total_level),
           approvers: [],
         };
         docs.set(key, doc);
       }
 
       const userId = text(row.user_id);
-      const lastSent = this.cache.lastWritten(
-        APPROVAL_CACHE_DIR,
-        markerName(entityCd, docNo, String(row.level_no), userId),
-      );
-      doc.approvers.push({
-        user_id: userId,
-        user_name: text(row.user_name) || userId,
-        email: maskEmail(text(row.email_addr)),
-        last_sent: lastSent ? lastSent.toISOString() : null,
-      });
+      doc.approvers.push({ user_id: userId, user_name: text(row.user_name) || userId });
     }
 
     return [...docs.values()];
@@ -146,7 +126,7 @@ export class ApprListService {
     const context = { entity_cd: entityCd, doc_no: docNo };
 
     if (!entityCd || !docNo) {
-      return { ok: false, message: 'entity_cd dan doc_no wajib diisi', recipients: [] };
+      return { ok: false, message: 'entity_cd and doc_no are required', recipients: [] };
     }
 
     this.logger.transaction('RESEND_APPROVAL', 'MULAI', `doc_no ${docNo}`, context);
@@ -156,7 +136,7 @@ export class ApprListService {
       [APPR_TYPE, APPR_MODULE, entityCd, docNo],
     );
     if (rows.length === 0) {
-      const message = `${docNo} tidak sedang menunggu approval (sudah diproses atau tidak ada)`;
+      const message = `${docNo} is not waiting for approval (already processed or not found)`;
       this.logger.transaction('RESEND_APPROVAL', 'LEWAT', message, context);
       return { ok: false, message, recipients: [] };
     }
@@ -190,8 +170,8 @@ export class ApprListService {
       }));
       const ok = recipients.length > 0 && recipients.every((r) => r.sent);
       const message = recipients.length === 0
-        ? 'SP selesai tanpa penerima'
-        : `${recipients.filter((r) => r.sent).length} dari ${recipients.length} email terkirim`;
+        ? 'Procedure finished without any recipient'
+        : `${recipients.filter((r) => r.sent).length} of ${recipients.length} email(s) sent`;
 
       this.logger.transaction('RESEND_APPROVAL', ok ? 'SUKSES' : 'GAGAL', `doc_no ${docNo}: ${message}`, {
         ...context,
@@ -199,7 +179,7 @@ export class ApprListService {
       });
       return { ok, message, recipients };
     } catch (err: any) {
-      const message = `Gagal menjalankan SP: ${err?.message ?? err}`;
+      const message = `Failed to run the procedure: ${err?.message ?? err}`;
       this.logger.transaction('RESEND_APPROVAL', 'GAGAL', `doc_no ${docNo}: ${message}`, context);
       return { ok: false, message, recipients: [] };
     }

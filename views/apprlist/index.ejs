@@ -1,14 +1,13 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Approval Pending - Approval KEMVIL</title>
+    <title>Pending Approval - Approval KEMVIL</title>
     <style>
         :root {
             --bg: #f5f6f8; --card: #ffffff; --text: #1f2933; --muted: #6b7280; --line: #e5e7eb;
-            --brand: #026735; --brand-soft: #e7f3ec; --warn: #b45309; --warn-soft: #fef3c7;
-            --err: #b91c1c; --err-soft: #fee2e2;
+            --brand: #026735; --warn: #b45309; --warn-soft: #fef3c7; --err: #b91c1c;
         }
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
@@ -31,14 +30,14 @@
         .doc { font-weight: bold; }
         .small { font-size: 12px; color: var(--muted); }
         .level { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-weight: bold; white-space: nowrap; }
-        .approver + .approver { margin-top: 8px; }
+        .approver { margin-top: 6px; }
         .result { margin-top: 6px; font-size: 12px; }
         .result.ok { color: var(--brand); }
         .result.fail { color: var(--err); }
         .state { padding: 40px 16px; text-align: center; color: var(--muted); }
         .state.error { color: var(--err); }
-        .descs { max-width: 280px; }
-        /* Layar kecil: tiap dokumen jadi kartu supaya tombol kirim ulang tidak tersembunyi di scroll samping. */
+        .descs { max-width: 360px; }
+        /* Small screens: one card per document so the resend button never hides behind horizontal scroll. */
         @media (max-width: 640px) {
             .card { overflow: visible; background: transparent; border: 0; }
             table, tbody, tr, td { display: block; width: 100%; }
@@ -54,13 +53,13 @@
 </head>
 <body>
 <div class="wrap">
-    <h1>Approval Pending</h1>
-    <p class="sub">Purchase Requisition yang masih menunggu approval. Hanya level yang sedang ditunggu yang ditampilkan.</p>
+    <h1>Pending Approval</h1>
+    <p class="sub">Documents still waiting for approval. Only the level currently waiting is shown.</p>
 
     <div class="bar">
-        <label for="q">Cari</label>
-        <input id="q" type="search" placeholder="No. PR, keterangan, atau approver" autocomplete="off">
-        <button id="reload" type="button">Muat ulang</button>
+        <label for="q">Search</label>
+        <input id="q" type="search" placeholder="Doc no., description, or approver" autocomplete="off">
+        <button id="reload" type="button">Refresh</button>
         <span class="count" id="count"></span>
     </div>
 
@@ -68,15 +67,14 @@
         <table>
             <thead>
             <tr>
-                <th>No. PR</th>
-                <th>Keterangan</th>
+                <th>Doc No.</th>
+                <th>Description</th>
                 <th>Level</th>
-                <th>Menunggu approval dari</th>
-                <th><span class="small">Aksi</span></th>
+                <th><span class="small">Action</span></th>
             </tr>
             </thead>
             <tbody id="rows">
-            <tr><td colspan="5" class="state">Memuat data...</td></tr>
+            <tr><td colspan="4" class="state">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -84,7 +82,7 @@
 
 <script>
     (function () {
-        // Relatif ke root supaya mengikuti host & port yang sedang dibuka (lihat welcome.ejs).
+        // Root-relative so requests follow the host & port currently open (see welcome.ejs).
         var dataUrl = '/apprlist/data';
         var sendUrl = '/apprlist/sendData';
         var rowsEl = document.getElementById('rows');
@@ -98,56 +96,51 @@
             });
         }
 
-        function fmtDate(iso, withTime) {
+        function fmtDate(iso) {
             if (!iso) return '';
-            var d = new Date(iso);
-            var opts = withTime
-                ? { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
-                : { day: '2-digit', month: 'short', year: 'numeric' };
-            return d.toLocaleString('id-ID', opts);
+            return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
         }
 
         function message(text, cls) {
-            rowsEl.innerHTML = '<tr><td colspan="5" class="state ' + (cls || '') + '">' + esc(text) + '</td></tr>';
+            rowsEl.innerHTML = '<tr><td colspan="4" class="state ' + (cls || '') + '">' + esc(text) + '</td></tr>';
+        }
+
+        function names(d) {
+            return d.approvers.map(function (a) { return a.user_name; });
         }
 
         function render() {
             var q = qEl.value.trim().toLowerCase();
             var list = docs.filter(function (d) {
                 if (!q) return true;
-                var hay = [d.doc_no, d.descs, d.entity_name].concat(d.approvers.map(function (a) { return a.user_name + ' ' + a.user_id; }));
-                return hay.join(' ').toLowerCase().indexOf(q) !== -1;
+                return [d.doc_no, d.descs, d.entity_name].concat(names(d)).join(' ').toLowerCase().indexOf(q) !== -1;
             });
 
-            countEl.textContent = list.length + ' dari ' + docs.length + ' dokumen';
-            if (docs.length === 0) return message('Tidak ada approval yang sedang menunggu.');
-            if (list.length === 0) return message('Tidak ada dokumen yang cocok dengan "' + qEl.value.trim() + '".');
+            countEl.textContent = list.length + ' of ' + docs.length + ' documents';
+            if (docs.length === 0) return message('No documents are waiting for approval.');
+            if (list.length === 0) return message('No documents match "' + qEl.value.trim() + '".');
 
-            rowsEl.innerHTML = list.map(function (d, i) {
-                var approvers = d.approvers.map(function (a) {
-                    return '<div class="approver"><div>' + esc(a.user_name) + ' <span class="small">(' + esc(a.user_id) + ')</span></div>'
-                        + '<div class="small">' + esc(a.email || 'email kosong') + '</div>'
-                        + '<div class="small">Terakhir dikirim: ' + (a.last_sent ? esc(fmtDate(a.last_sent, true)) : 'belum tercatat') + '</div></div>';
-                }).join('');
+            rowsEl.innerHTML = list.map(function (d) {
+                var i = docs.indexOf(d);
+                var approvers = names(d).map(function (n) { return '<div class="approver">' + esc(n) + '</div>'; }).join('');
                 return '<tr>'
                     + '<td><div class="doc">' + esc(d.doc_no) + '</div><div class="small">' + esc(d.entity_name || d.entity_cd) + '</div>'
                     + '<div class="small">' + esc(fmtDate(d.request_date)) + '</div></td>'
-                    + '<td class="descs" data-label="Keterangan">' + esc(d.descs) + '</td>'
-                    + '<td data-label="Level"><span class="level">Level ' + esc(d.level_no) + ' dari ' + esc(d.total_level) + '</span></td>'
-                    + '<td data-label="Menunggu approval dari">' + approvers + '</td>'
-                    + '<td><button type="button" class="primary" data-i="' + docs.indexOf(d) + '">Kirim ulang email</button>'
-                    + '<div class="result" id="res-' + docs.indexOf(d) + '" role="status"></div></td>'
+                    + '<td class="descs" data-label="Description">' + esc(d.descs) + '</td>'
+                    + '<td data-label="Level"><span class="level">Level ' + esc(d.level_no) + '</span>' + approvers + '</td>'
+                    + '<td><button type="button" class="primary" data-i="' + i + '">Resend email</button>'
+                    + '<div class="result" id="res-' + i + '" role="status"></div></td>'
                     + '</tr>';
             }).join('');
         }
 
         function load() {
-            message('Memuat data...');
+            message('Loading...');
             countEl.textContent = '';
             fetch(dataUrl, { headers: { Accept: 'application/json' } })
                 .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function (data) { docs = Array.isArray(data) ? data : []; render(); })
-                .catch(function (e) { message('Data tidak dapat dimuat (' + e.message + '). Coba Muat ulang.', 'error'); });
+                .catch(function (e) { message('Could not load data (' + e.message + '). Click Refresh to try again.', 'error'); });
         }
 
         rowsEl.addEventListener('click', function (ev) {
@@ -155,12 +148,11 @@
             if (!btn) return;
             var i = Number(btn.getAttribute('data-i'));
             var d = docs[i];
-            var names = d.approvers.map(function (a) { return a.user_name; }).join(', ');
-            if (!confirm('Kirim ulang email approval ' + d.doc_no + ' (level ' + d.level_no + ') ke ' + names + '?')) return;
+            if (!confirm('Resend approval email for ' + d.doc_no + ' (level ' + d.level_no + ') to ' + names(d).join(', ') + '?')) return;
 
             var res = document.getElementById('res-' + i);
             btn.disabled = true;
-            btn.textContent = 'Mengirim...';
+            btn.textContent = 'Sending...';
             res.className = 'result';
             res.textContent = '';
 
@@ -172,19 +164,15 @@
                 .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function (out) {
                     res.className = 'result ' + (out.ok ? 'ok' : 'fail');
-                    res.textContent = out.message + (out.ok ? '' : '. Coba kirim ulang lagi, atau cek log RESEND_APPROVAL.');
-                    if (out.ok) {
-                        var now = new Date().toISOString();
-                        d.approvers.forEach(function (a) { a.last_sent = now; });
-                    }
+                    res.textContent = out.message + (out.ok ? '' : '. Try again, or check the RESEND_APPROVAL log.');
                 })
                 .catch(function (e) {
                     res.className = 'result fail';
-                    res.textContent = 'Permintaan gagal (' + e.message + '). Coba kirim ulang lagi.';
+                    res.textContent = 'Request failed (' + e.message + '). Try again.';
                 })
                 .finally(function () {
                     btn.disabled = false;
-                    btn.textContent = 'Kirim ulang email';
+                    btn.textContent = 'Resend email';
                 });
         });
 
