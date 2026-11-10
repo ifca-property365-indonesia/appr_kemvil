@@ -45,7 +45,8 @@ export type TransactionAction =
   | 'APPROVAL'
   | 'EXEC_SP'
   | 'FTP_ATTACHMENT'
-  | 'RESET_PENANDA';
+  | 'RESET_PENANDA'
+  | 'RESEND_APPROVAL';
 
 /** LEWAT = sengaja tidak diproses (sudah terkirim, tanpa penerima); DITOLAK = link tidak berlaku. */
 export type TransactionStage = 'MULAI' | 'SUKSES' | 'GAGAL' | 'LEWAT' | 'DITOLAK';

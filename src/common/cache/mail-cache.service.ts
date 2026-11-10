@@ -144,6 +144,23 @@ export class MailCacheService {
     return { txt, lock, removed };
   }
 
+  /** Waktu penanda `fileName` paling baru di `<cacheDir>/<tanggal apa saja>/`, null bila belum pernah. */
+  lastWritten(cacheDir: string, fileName: string): Date | null {
+    const root = path.join(this.baseDir, cacheDir);
+    if (!fs.existsSync(root)) return null;
+
+    let latest: Date | null = null;
+    for (const day of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!day.isDirectory()) continue;
+
+      const file = path.join(root, day.name, fileName);
+      if (!fs.existsSync(file)) continue;
+      const mtime = fs.statSync(file).mtime;
+      if (!latest || mtime > latest) latest = mtime;
+    }
+    return latest;
+  }
+
   /**
    * Hapus semua penanda `.txt` di `<cacheDir>/<tanggal apa saja>/` yang namanya diawali `prefix`.
    * File `.lock` tidak disentuh: dipakai proses yang sedang mengirim dan hilang sendiri setelahnya.
