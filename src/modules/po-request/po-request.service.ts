@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AttachmentService } from '../../common/attachment/attachment.service';
+import { MailCacheService } from '../../common/cache/mail-cache.service';
 import { TokenService } from '../../common/crypto/token.service';
 import { DatabaseService, ProcedureResult } from '../../common/database/database.service';
 import { FormatHelper } from '../../common/helpers/format.helper';
@@ -14,6 +15,8 @@ const PROCEDURE = 'mgr.x_send_mail_approval_po_request';
 const APPROVAL_TABLE = 'mgr.po_authorized_person';
 /** Folder attachment PR di FTP; link: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file}. */
 const ATTACHMENT_DIR = 'po_pr_attach';
+/** Folder penanda email approval: storage/app/mail_cache/send_porequest/{Ymd}/. */
+const APPROVAL_CACHE_DIR = 'send_porequest';
 const LABEL = 'Purchase Requisition';
 const AUDIT_CHANNEL = 'approval';
 
@@ -63,6 +66,7 @@ export class PoRequestService {
     private readonly view: ViewService,
     private readonly logger: AppLoggerService,
     private readonly attachment: AttachmentService,
+    private readonly mailCache: MailCacheService,
   ) {}
 
   /** POST /api/maildata - body JSON dari SP. Balasan teks dibaca SP sebagai penanda sukses. */
@@ -120,7 +124,7 @@ export class PoRequestService {
 
       const result = await this.approvalMail.sendGuarded({
         emailAddr: body.email_addr,
-        cacheDir: 'send_porequest',
+        cacheDir: APPROVAL_CACHE_DIR,
         cacheKeyParts: [payload.entity_cd, payload.doc_no, payload.level_no, payload.user_id],
         view: 'email.porequest.send',
         subject: dataArray.subject,
@@ -165,6 +169,11 @@ export class PoRequestService {
       this.logger.channel('sendmail').error(`Feedback ${LABEL} ${docNo}: status "${body.status}" tidak dikenal`);
       this.logger.transaction('EMAIL_FEEDBACK', 'GAGAL', `${LABEL} No. ${docNo}: status "${body.status}" tidak dikenal`, trxContext);
       return `Status feedback tidak dikenal: ${body.status}`;
+    }
+
+    // SP juga bisa memproses M/R di luar link email, jadi penanda ikut dihapus di sini.
+    if (status === 'M' || status === 'R') {
+      this.resetApprovalMarkers(trxContext.entity_cd, docNo, status);
     }
 
     const dataArray = {
@@ -339,11 +348,39 @@ export class PoRequestService {
       durationMs: Date.now() - started,
     });
 
+    if (status === 'M' || status === 'R') {
+      this.resetApprovalMarkers(data.entity_cd, data.doc_no, status);
+    }
+
     return this.message(`You Have Successfully ${option.done} the ${LABEL} No. ${data.doc_no}`, {
       notif: `${option.done} !`,
       image: option.image,
       entity_name: data.entity_name,
     });
+  }
+
+  /**
+   * Revise / Reject: dokumen akan diajukan ulang dari level 1, jadi hapus penanda email approval
+   * semua level & user dokumen ini (semua tanggal) supaya email yang sama bisa terkirim lagi.
+   * Gagal menghapus hanya dicatat; approval tetap dianggap berhasil.
+   */
+  private resetApprovalMarkers(entityCd: string, docNo: string, status: string): void {
+    const context = { entity_cd: entityCd, doc_no: docNo, status };
+    if (!entityCd || !docNo) {
+      this.logger.transaction('RESET_PENANDA', 'LEWAT', `${LABEL} No. ${docNo}: entity_cd / doc_no kosong`, context);
+      return;
+    }
+
+    try {
+      // `_` setelah doc_no supaya PR26100033 tidak ikut menghapus penanda PR261000330.
+      const removed = this.mailCache.forgetByPrefix(APPROVAL_CACHE_DIR, `email_sent_${entityCd}_${docNo}_`);
+      this.logger.transaction('RESET_PENANDA', 'SUKSES', `${removed.length} penanda ${LABEL} No. ${docNo}`, {
+        ...context,
+        removed,
+      });
+    } catch (err: any) {
+      this.logger.transaction('RESET_PENANDA', 'GAGAL', `${LABEL} No. ${docNo}: ${err?.message ?? err}`, context);
+    }
   }
 
   /**

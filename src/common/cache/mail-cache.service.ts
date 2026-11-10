@@ -143,6 +143,28 @@ export class MailCacheService {
 
     return { txt, lock, removed };
   }
+
+  /**
+   * Hapus semua penanda `.txt` di `<cacheDir>/<tanggal apa saja>/` yang namanya diawali `prefix`.
+   * File `.lock` tidak disentuh: dipakai proses yang sedang mengirim dan hilang sendiri setelahnya.
+   * Mengembalikan path relatif penanda yang dihapus.
+   */
+  forgetByPrefix(cacheDir: string, prefix: string): string[] {
+    const root = path.join(this.baseDir, cacheDir);
+    if (!fs.existsSync(root)) return [];
+
+    const removed: string[] = [];
+    for (const day of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!day.isDirectory()) continue;
+
+      for (const name of fs.readdirSync(path.join(root, day.name))) {
+        if (!name.startsWith(prefix) || !name.endsWith('.txt')) continue;
+        fs.unlinkSync(path.join(root, day.name, name));
+        removed.push(`${cacheDir}/${day.name}/${name}`);
+      }
+    }
+    return removed;
+  }
 }
 
 async function acquireFileLock(
