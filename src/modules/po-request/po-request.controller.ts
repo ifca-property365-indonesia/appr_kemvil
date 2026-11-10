@@ -47,11 +47,11 @@ export class PoRequestController {
     return this.service.send(body);
   }
 
-  /** GET /api/porequest/{A|M|R}/{token} - halaman konfirmasi dari link email. */
+  /** GET /api/porequest/{A|M|C}/{token} - halaman konfirmasi dari link email. */
   @Get('porequest/:status/:encrypt')
   @Header('Content-Type', 'text/html; charset=utf-8')
   @ApiOperation({ summary: 'Halaman konfirmasi dari link email' })
-  @ApiParam({ name: 'status', enum: ['A', 'M', 'R'], description: 'A = Approve, M = Revise, R = Reject' })
+  @ApiParam({ name: 'status', enum: ['A', 'M', 'C'], description: 'A = Approve, M = Revise, C = Reject (R lama tetap diterima)' })
   @ApiParam({ name: 'encrypt', description: 'Token dari link email' })
   @ApiProduces('text/html')
   confirm(@Param('status') status: string, @Param('encrypt') encrypt: string) {
@@ -68,7 +68,7 @@ export class PoRequestController {
       type: 'object',
       required: ['status', 'encrypt'],
       properties: {
-        status: { type: 'string', enum: ['A', 'M', 'R'] },
+        status: { type: 'string', enum: ['A', 'M', 'C'] },
         encrypt: { type: 'string', description: 'Token dari link email' },
         reason: { type: 'string', description: "Kosong / 0 -> 'no note'" },
       },

@@ -24,11 +24,11 @@ const AUDIT_CHANNEL = 'approval';
 const DEFAULT_APPR_MODULE = 'PR';
 const DEFAULT_APPR_TYPE = 'C';
 
-/** Status yang dikirim ke SP: A = Approve, M = Revise, R = Reject. */
+/** Status yang dikirim ke SP: A = Approve, M = Revise (modify), C = Reject. */
 const STATUS: Record<string, { name: string; color: string; button: string; done: string; image: string }> = {
   A: { name: 'Approval', color: '#1ee0ac', button: 'Approve', done: 'Approved', image: 'approved.png' },
   M: { name: 'Revision', color: '#f4bd0e', button: 'Revise', done: 'Revised', image: 'revise.png' },
-  R: { name: 'Rejection', color: '#e85347', button: 'Reject', done: 'Rejected', image: 'reject.png' },
+  C: { name: 'Rejection', color: '#e85347', button: 'Reject', done: 'Rejected', image: 'reject.png' },
 };
 
 /** Isi token pada link Approve/Revise/Reject. */
@@ -156,7 +156,7 @@ export class PoRequestService {
    * A = sudah di-approve semua level, M = diminta revisi, R = ditolak.
    */
   private async sendFeedback(body: Record<string, any>): Promise<string> {
-    const status = text(body.status).toUpperCase();
+    const status = normalizeStatus(body.status);
     const option = STATUS[status];
     const docNo = text(body.doc_no);
     const trxContext = {
@@ -171,8 +171,8 @@ export class PoRequestService {
       return `Status feedback tidak dikenal: ${body.status}`;
     }
 
-    // SP juga bisa memproses M/R di luar link email, jadi penanda ikut dihapus di sini.
-    if (status === 'M' || status === 'R') {
+    // SP juga bisa memproses M/C di luar link email, jadi penanda ikut dihapus di sini.
+    if (status === 'M' || status === 'C') {
       this.resetApprovalMarkers(trxContext.entity_cd, docNo, status);
     }
 
@@ -219,7 +219,8 @@ export class PoRequestService {
 
   /** GET /api/porequest/{status}/{token} - halaman konfirmasi + kolom alasan. */
   async confirm(status: string, encrypt: string): Promise<string> {
-    const option = STATUS[String(status ?? '').toUpperCase()];
+    status = normalizeStatus(status);
+    const option = STATUS[status];
     if (!option) {
       this.logger.transaction('KONFIRMASI', 'DITOLAK', `action "${status}" tidak dikenal`, { status });
       return this.message(`Unknown action "${status}"`);
@@ -244,7 +245,7 @@ export class PoRequestService {
       );
 
       return this.view.render('email.porequest.confirm', {
-        status: String(status).toUpperCase(),
+        status,
         encrypt,
         doc_no: data.doc_no,
         name: option.name,
@@ -267,7 +268,7 @@ export class PoRequestService {
 
   /** POST /api/porequest/getaccess - jalankan SP sesuai keputusan approver. */
   async execute(body: Record<string, any>): Promise<string> {
-    const status = String(body.status ?? '').toUpperCase();
+    const status = normalizeStatus(body.status);
     const option = STATUS[status];
     if (!option) {
       this.logger.transaction('APPROVAL', 'DITOLAK', `action "${body.status}" tidak dikenal`, { status: body.status });
@@ -348,7 +349,7 @@ export class PoRequestService {
       durationMs: Date.now() - started,
     });
 
-    if (status === 'M' || status === 'R') {
+    if (status === 'M' || status === 'C') {
       this.resetApprovalMarkers(data.entity_cd, data.doc_no, status);
     }
 
@@ -403,7 +404,7 @@ export class PoRequestService {
 
     const reason = !row
       ? `There is no ${LABEL} with No. ${data.doc_no}`
-      : STATUS[row.status]
+      : STATUS[normalizeStatus(row.status)]
         ? `You Have Already Made a Request to ${LABEL} No. ${data.doc_no}`
         : `${LABEL} No. ${data.doc_no} is not waiting for your approval`;
 
@@ -430,6 +431,15 @@ export class PoRequestService {
       entity_name: extra.entity_name || null,
     });
   }
+}
+
+/**
+ * Kode status dalam huruf besar. `R` adalah kode Reject lama: link di email yang sudah
+ * terkirim sebelum perubahan ke `C` tetap berlaku.
+ */
+function normalizeStatus(value: any): string {
+  const status = text(value).toUpperCase();
+  return status === 'R' ? 'C' : status;
 }
 
 function text(value: any): string {
