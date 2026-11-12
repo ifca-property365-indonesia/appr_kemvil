@@ -13,6 +13,7 @@ import { ViewService } from '../../common/view/view.service';
 /** Stored procedure approval PR (lihat mgr.x_send_mail_approval_po_request). */
 const PROCEDURE = 'mgr.x_send_mail_approval_po_request';
 const APPROVAL_TABLE = 'mgr.po_authorized_person';
+const HEADER_TABLE = 'mgr.po_request_hd';
 /** Folder attachment PR di FTP; link: URL_PDF/{LIVE|TRAIN}/po_pr_attach/{file}. */
 const ATTACHMENT_DIR = 'po_pr_attach';
 /** Folder penanda email approval: storage/app/mail_cache/send_porequest/{Ymd}/. */
@@ -387,6 +388,8 @@ export class PoRequestService {
   /**
    * Link hanya berlaku selama baris approver masih 'O' (giliran approver ini), atau 'M' untuk
    * level terkecil yang di-reset SP setelah Modify dan diajukan ulang dari awal.
+   * Selama header masih approved_status 'M' (sedang direvisi, belum diajukan ulang) link ditolak,
+   * supaya link lama di email putaran sebelumnya tidak bisa dipakai.
    * Mengembalikan halaman penolakan, atau null bila boleh lanjut.
    */
   private async checkPending(
@@ -394,27 +397,36 @@ export class PoRequestService {
     status: string,
     action: 'KONFIRMASI' | 'APPROVAL',
   ): Promise<string | null> {
-    const row = await this.db.first<{ status: string }>(
-      `SELECT TOP 1 status FROM ${APPROVAL_TABLE}
-       WHERE entity_cd = ? AND doc_no = ? AND level_no = ? AND user_id = ?
-         AND trx_type = ? AND module = ? AND type = ?`,
+    const row = await this.db.first<{ status: string; approved_status: string | null }>(
+      `SELECT TOP 1 a.status, h.approved_status FROM ${APPROVAL_TABLE} a
+       LEFT JOIN ${HEADER_TABLE} h
+              ON h.entity_cd = a.entity_cd AND h.request_no = a.doc_no AND h.request_trx_type = a.trx_type
+       WHERE a.entity_cd = ? AND a.doc_no = ? AND a.level_no = ? AND a.user_id = ?
+         AND a.trx_type = ? AND a.module = ? AND a.type = ?`,
       [data.entity_cd, data.doc_no, data.level_no, data.user_id, data.trx_type, data.appr_module, data.appr_type],
     );
 
-    if (row?.status === 'O' || row?.status === 'M') return null;
+    const inRevision = text(row?.approved_status).toUpperCase() === 'M';
+    if ((row?.status === 'O' || row?.status === 'M') && !inRevision) return null;
 
     const reason = !row
       ? `There is no ${LABEL} with No. ${data.doc_no}`
-      : STATUS[normalizeStatus(row.status)]
+      : inRevision
+        ? `${LABEL} No. ${data.doc_no} is being revised. Please wait until it is submitted again`
+        : STATUS[normalizeStatus(row.status)]
         ? `You Have Already Made a Request to ${LABEL} No. ${data.doc_no}`
         : `${LABEL} No. ${data.doc_no} is not waiting for your approval`;
 
     this.logger
       .channel(AUDIT_CHANNEL)
-      .warn(`DITOLAK (${row ? `status ${row.status}` : 'tidak ada'}) ${LABEL} No. ${data.doc_no}`, auditContext(data, status));
+      .warn(
+        `DITOLAK (${row ? `status ${row.status}${inRevision ? ', header M' : ''}` : 'tidak ada'}) ${LABEL} No. ${data.doc_no}`,
+        auditContext(data, status),
+      );
     this.logger.transaction(action, 'DITOLAK', `${LABEL} No. ${data.doc_no}: ${reason}`, {
       ...auditContext(data, status),
       status_saat_ini: row?.status ?? null,
+      approved_status_header: row?.approved_status ?? null,
     });
 
     return this.message(reason, { image: 'double_approve.png', entity_name: data.entity_name });
