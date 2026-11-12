@@ -3,7 +3,7 @@ import { MailCacheService } from '../../common/cache/mail-cache.service';
 import { DatabaseService } from '../../common/database/database.service';
 import { AppLoggerService } from '../../common/logger/app-logger.service';
 
-/** SP yang sama dengan alur approval; level_no '0' = lewati update, hanya kirim email ke level 'O'. */
+/** SP yang sama dengan alur approval; level_no '0' = lewati update, hanya kirim email ke level 'O' / 'M'. */
 const PROCEDURE = 'mgr.x_send_mail_approval_po_request';
 /** Folder & prefix penanda email approval, sama dengan PoRequestService.send(). */
 const APPROVAL_CACHE_DIR = 'send_porequest';
@@ -47,6 +47,7 @@ export interface ResendResult {
 
 /**
  * Hanya level 'O' terendah per dokumen: level sebelumnya sudah approve, level sesudahnya masih 'N'.
+ * 'M' ikut dihitung: level terkecil setelah reset Modify, saat diajukan ulang dari awal.
  * Dokumen yang sudah final (A), diminta revisi (M) atau ditolak (C) tidak ikut.
  */
 const PENDING_SQL = `
@@ -58,12 +59,12 @@ LEFT JOIN mgr.po_request_hd h WITH (NOLOCK)
        ON h.entity_cd = a.entity_cd AND h.request_no = a.doc_no AND h.request_trx_type = a.trx_type
 LEFT JOIN mgr.security_users u WITH (NOLOCK) ON u.name = a.user_id
 LEFT JOIN mgr.cf_entity e WITH (NOLOCK) ON e.entity_cd = a.entity_cd
-WHERE a.type = ? AND a.module = ? AND a.status = 'O'
+WHERE a.type = ? AND a.module = ? AND a.status IN ('O', 'M')
   AND a.level_no = (SELECT MIN(l.level_no)
                     FROM mgr.po_authorized_person l WITH (NOLOCK)
                     WHERE l.entity_cd = a.entity_cd AND l.doc_no = a.doc_no
                       AND l.type = a.type AND l.module = a.module AND l.trx_type = a.trx_type
-                      AND l.status = 'O')
+                      AND l.status IN ('O', 'M'))
   AND ISNULL(h.approved_status, '') NOT IN ('A', 'M', 'C')
 `;
 

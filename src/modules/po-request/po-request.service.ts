@@ -385,7 +385,8 @@ export class PoRequestService {
   }
 
   /**
-   * Link hanya berlaku selama baris approver masih 'O' (giliran approver ini).
+   * Link hanya berlaku selama baris approver masih 'O' (giliran approver ini), atau 'M' untuk
+   * level terkecil yang di-reset SP setelah Modify dan diajukan ulang dari awal.
    * Mengembalikan halaman penolakan, atau null bila boleh lanjut.
    */
   private async checkPending(
@@ -400,7 +401,7 @@ export class PoRequestService {
       [data.entity_cd, data.doc_no, data.level_no, data.user_id, data.trx_type, data.appr_module, data.appr_type],
     );
 
-    if (row?.status === 'O') return null;
+    if (row?.status === 'O' || row?.status === 'M') return null;
 
     const reason = !row
       ? `There is no ${LABEL} with No. ${data.doc_no}`
