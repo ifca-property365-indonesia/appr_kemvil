@@ -5,7 +5,7 @@
  */
 'use strict';
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const fs = require('fs');
 const path = require('path');
 const sql = require('mssql');
