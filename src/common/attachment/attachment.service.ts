@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client } from 'basic-ftp';
+import { FtpService } from '../ftp/ftp.service';
 import { AppLoggerService } from '../logger/app-logger.service';
 
 /** Daftar link + nama file yang dibaca template email (`url_file[i]` <-> `file_name[i]`). */
@@ -8,9 +8,6 @@ export interface AttachmentLinks {
   url_file: string[];
   file_name: string[];
 }
-
-/** Batas tunggu FTP: SP menunggu balasan /api/maildata, jadi jangan terlalu lama. */
-const FTP_TIMEOUT_MS = 10000;
 
 /**
  * Attachment email approval, dibaca langsung dari FTP dan dipakai semua module.
@@ -24,6 +21,7 @@ export class AttachmentService {
   constructor(
     private readonly config: ConfigService,
     private readonly logger: AppLoggerService,
+    private readonly ftp: FtpService,
   ) {}
 
   /** Gagal membaca FTP tidak menggagalkan email: dicatat, lalu email terkirim tanpa link. */
@@ -32,7 +30,7 @@ export class AttachmentService {
     const started = Date.now();
 
     try {
-      const files = matchFiles(await this.list(dir), entityCd, docNo);
+      const files = matchFiles(await this.ftp.listFiles(dir), entityCd, docNo);
       const { url, folder } = this.config.get<{ url: string; folder: string }>('attachment');
 
       this.logger.transaction('FTP_ATTACHMENT', 'SUKSES', `${files.length} file doc_no ${docNo}`, {
@@ -54,24 +52,6 @@ export class AttachmentService {
     }
   }
 
-  /** Nama seluruh file (bukan folder) di dalam `dir`. */
-  private async list(dir: string): Promise<string[]> {
-    const ftp = this.config.get('ftp');
-    const client = new Client(FTP_TIMEOUT_MS);
-
-    try {
-      await client.access({
-        host: ftp.host,
-        port: ftp.port,
-        user: ftp.username,
-        password: ftp.password,
-      });
-      const entries = await client.list(dir);
-      return entries.filter((entry) => entry.isFile).map((entry) => entry.name);
-    } finally {
-      client.close();
-    }
-  }
 }
 
 /** `_` wajib setelah doc_no supaya PR26100033 tidak ikut mengambil file PR261000330. */
