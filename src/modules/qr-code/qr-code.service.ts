@@ -19,7 +19,8 @@ interface ApprovedRow {
   project_no: string | null;
   user_id: string;
   user_name: string | null;
-  approved_date: Date | null;
+  /** approved_date apa adanya dari SQL Server (`yyyy-mm-dd hh:mi:ss`), tanpa konversi zona waktu. */
+  approved_text: string | null;
   entity_name: string | null;
 }
 
@@ -69,7 +70,8 @@ export class QrCodeService implements OnModuleInit {
 
     try {
       const rows = await this.db.query<ApprovedRow>(
-        `SELECT a.project_no, a.user_id, u.description AS user_name, a.approved_date, e.entity_name
+        `SELECT a.project_no, a.user_id, u.description AS user_name,
+                CONVERT(varchar(19), a.approved_date, 120) AS approved_text, e.entity_name
          FROM mgr.po_authorized_person a WITH (NOLOCK)
          LEFT JOIN mgr.security_users u WITH (NOLOCK) ON u.name = a.user_id
          LEFT JOIN mgr.cf_entity e WITH (NOLOCK) ON e.entity_cd = a.entity_cd
@@ -187,7 +189,9 @@ END`;
 /** Isi QR: teks bukti approve. Satu level bisa berisi lebih dari satu approver. */
 function qrContent(entityCd: string, docNo: string, levelNo: string, rows: ApprovedRow[]): string {
   const names = rows.map((r) => text(r.user_name) || text(r.user_id)).join(', ');
-  const latest = rows[rows.length - 1].approved_date;
+  // Kolom datetime tidak punya zona waktu; driver mssql membacanya sebagai UTC sehingga jam bergeser
+  // +7 bila diformat sebagai WIB. Pakai teks dari SQL Server supaya sama persis dengan isi tabel.
+  const latest = text(rows[rows.length - 1].approved_text);
 
   return [
     `Doc No: ${docNo}`,
