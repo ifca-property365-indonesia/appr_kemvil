@@ -3,6 +3,7 @@ import { AttachmentService } from './attachment/attachment.service';
 import { MailCacheService } from './cache/mail-cache.service';
 import { TokenService } from './crypto/token.service';
 import { DatabaseService } from './database/database.service';
+import { FtpService } from './ftp/ftp.service';
 import { AppLoggerService } from './logger/app-logger.service';
 import { ApprovalMailService } from './mail/approval-mail.service';
 import { MailService } from './mail/mail.service';
@@ -16,6 +17,7 @@ import { ViewService } from './view/view.service';
 @Global()
 @Module({
   providers: [
+    FtpService,
     AttachmentService,
     AppLoggerService,
     DatabaseService,
@@ -27,6 +29,7 @@ import { ViewService } from './view/view.service';
     TokenService,
   ],
   exports: [
+    FtpService,
     AttachmentService,
     AppLoggerService,
     DatabaseService,
