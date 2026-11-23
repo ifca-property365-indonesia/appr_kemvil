@@ -41,8 +41,10 @@ DECLARE @ole_desc			varchar(2000)
 -- URL aplikasi approval (tanpa slash di akhir) - samakan dengan SP x_send_mail_approval_po_request
 --SELECT @f_api_mail = api_mail FROM mgr.ar_spec (NOLOCK)
 --SET @f_api_mail = 'http://10.10.0.25:7354'
-SET @f_api_mail = 'https://ifcademo.property365.co.id:7354'
-SET @URL = ISNULL(@f_api_mail, '') + '/api/qrcode'
+SET @f_api_mail = 'https://apprkemvil.property365.co.id/'
+SET @f_api_mail = ISNULL(@f_api_mail, '')
+WHILE RIGHT(@f_api_mail, 1) = '/' SET @f_api_mail = LEFT(@f_api_mail, LEN(@f_api_mail) - 1)
+SET @URL = @f_api_mail + '/api/qrcode'
 
 SET @Body = (
 	SELECT
