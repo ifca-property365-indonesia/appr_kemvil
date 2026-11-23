@@ -81,7 +81,7 @@ export class SystemService {
   async checkConnection(): Promise<{ status: string; message: string; code: number }> {
     try {
       await this.db.ping();
-      return { status: 'success', message: 'Connected to BEFA database', code: 200 };
+      return { status: 'success', message: `Connected to ${this.db.getDatabaseName()} database`, code: 200 };
     } catch (err: any) {
       this.logger.channel('daily').error(`Cek koneksi database gagal: ${err?.message ?? err}`);
       return { status: 'error', message: err?.message ?? String(err), code: 500 };
