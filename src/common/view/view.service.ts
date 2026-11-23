@@ -57,7 +57,12 @@ export class ViewService {
       filename: file,
       views: [this.viewsDir],
       rmWhitespace: false,
-    });
+      // EJS 4+ menyalin locals ke objek baru sebelum render, sehingga Proxy dari lenientLocals()
+      // hilang dan variabel yang tidak dikirim menjadi ReferenceError (misalnya appName di
+      // welcome.ejs). Opsi ini meneruskan objek locals apa adanya, seperti EJS 3. Data template
+      // seluruhnya berasal dari server, bukan dari input pengunjung.
+      unsafePrototypeLocals: true,
+    } as ejs.Options & { async?: false; client?: false });
 
     this.cache.set(file, compiled);
     return compiled;
