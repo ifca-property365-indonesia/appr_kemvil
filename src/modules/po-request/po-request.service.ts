@@ -255,13 +255,15 @@ export class PoRequestService {
         entity_name: data.entity_name,
       });
     } catch (err: any) {
-      this.logger.channel('daily').error(`confirm porequest gagal: ${err?.message ?? err}`);
+      this.logger
+        .channel('daily')
+        .error(`confirm porequest gagal (status ${status}, token ${tokenHint(encrypt)}): ${err?.message ?? err}`);
       // data kosong berarti token tidak dapat dibaca (rusak / kedaluwarsa).
       this.logger.transaction(
         'KONFIRMASI',
         'GAGAL',
         `${data ? `${LABEL} No. ${data.doc_no}` : 'token tidak valid'}: ${err?.message ?? err}`,
-        data ? auditContext(data, status) : { status },
+        data ? auditContext(data, status) : { status, token: tokenHint(encrypt) },
       );
       return this.message(err?.message ?? String(err));
     }
@@ -280,8 +282,11 @@ export class PoRequestService {
     try {
       data = await this.token.decrypt<ApprovalToken>(String(body.encrypt ?? ''));
     } catch (err: any) {
-      this.logger.channel('daily').error(`execute porequest gagal: ${err?.message ?? err}`);
-      this.logger.transaction('APPROVAL', 'GAGAL', `token tidak valid: ${err?.message ?? err}`, { status });
+      const token = tokenHint(body.encrypt);
+      this.logger
+        .channel('daily')
+        .error(`execute porequest gagal (status ${status}, token ${token}): ${err?.message ?? err}`);
+      this.logger.transaction('APPROVAL', 'GAGAL', `token tidak valid: ${err?.message ?? err}`, { status, token });
       return this.message(err?.message ?? String(err));
     }
 
@@ -453,6 +458,18 @@ export class PoRequestService {
 function normalizeStatus(value: any): string {
   const status = text(value).toUpperCase();
   return status === 'R' ? 'C' : status;
+}
+
+/**
+ * Token dari URL untuk log saat gagal dibaca: id pendek ditulis utuh (bisa dicari di
+ * mgr.approval_url_token), token inline panjang dipotong. Selalu disertai panjangnya
+ * supaya token yang terpotong / bertambah karakter terlihat.
+ */
+function tokenHint(value: any): string {
+  const raw = value === null || value === undefined ? '' : String(value);
+  if (raw === '') return '"" (kosong)';
+  const shown = raw.length > 40 ? `${raw.slice(0, 20)}...${raw.slice(-8)}` : raw;
+  return `"${shown}" (${raw.length} karakter)`;
 }
 
 function text(value: any): string {
