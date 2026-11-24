@@ -47,6 +47,10 @@ async function bootstrap(): Promise<void> {
   // agar url() di template hasil konversi tetap cocok.
   app.useStaticAssets(path.join(process.cwd(), 'public'), { prefix: '/public' });
   app.useStaticAssets(path.join(process.cwd(), 'assets'), { prefix: '/assets' });
+  // Browser selalu meminta /favicon.ico dari root. public/favicon.ico kosong (0 byte),
+  // jadi pakai ikon yang berisi di public/images/.
+  const favicon = path.join(process.cwd(), 'public', 'images', 'favicon.ico');
+  app.getHttpAdapter().get('/favicon.ico', (_req: any, res: any) => res.sendFile(favicon, { maxAge: '7d' }));
 
   app.enableCors({ origin: true, credentials: true });
 
