@@ -29,6 +29,8 @@ interface ApprovedRow {
  * Data diambil ulang dari database (bukan dari body), lalu PNG disimpan di FTP:
  *   qrcode/{entity_cd}_{doc_no}_{level_no}.png  (ditimpa bila level yang sama di-approve ulang)
  * Lokasinya dicatat di mgr.approval_qrcode (satu baris per dokumen per level).
+ * Setiap panggilan juga melengkapi level lain dokumen yang sudah di-approve tetapi belum
+ * punya baris di tabel (mis. QR level 1 gagal saat itu -> ikut dibuat saat level 2 di-approve).
  */
 @Injectable()
 export class QrCodeService implements OnModuleInit {
@@ -68,70 +70,134 @@ export class QrCodeService implements OnModuleInit {
 
     this.logger.transaction('QR_CODE', 'MULAI', `doc_no ${docNo} level ${levelNo}`, context);
 
+    const doc: DocKey = { entityCd, docNo, trxType, module, projectNo: text(body?.project_no) };
+    let message: string;
     try {
-      const rows = await this.db.query<ApprovedRow>(
-        `SELECT a.project_no, a.user_id, u.description AS user_name,
-                CONVERT(varchar(19), a.approved_date, 120) AS approved_text, e.entity_name
-         FROM mgr.po_authorized_person a WITH (NOLOCK)
-         LEFT JOIN mgr.security_users u WITH (NOLOCK) ON u.name = a.user_id
-         LEFT JOIN mgr.cf_entity e WITH (NOLOCK) ON e.entity_cd = a.entity_cd
-         WHERE a.entity_cd = ? AND a.doc_no = ? AND a.level_no = ? AND a.trx_type = ?
-           AND a.module = ? AND a.type = ? AND a.status = 'A'
-           AND (? IS NULL OR a.user_id = ?)
-         ORDER BY a.approved_date`,
-        [entityCd, docNo, levelNo, trxType, module, APPR_TYPE, userId, userId],
-      );
-
-      if (rows.length === 0) {
-        const message = `QR code tidak dibuat: level ${levelNo} dokumen ${docNo} belum di-approve`;
+      const result = await this.createLevel(doc, levelNo, userId);
+      if (!result) {
+        message = `QR code tidak dibuat: level ${levelNo} dokumen ${docNo} belum di-approve`;
         this.logger.transaction('QR_CODE', 'LEWAT', message, context);
-        return message;
-      }
-
-      const content = qrContent(entityCd, docNo, levelNo, rows);
-      const png = await QRCode.toBuffer(content, { type: 'png', errorCorrectionLevel: 'M', margin: 2, width: 300 });
-      const fileName = `${safeName(entityCd)}_${safeName(docNo)}_${safeName(levelNo)}.png`;
-      const path = await this.ftp.upload(QR_DIR, fileName, png);
-      const { url, folder } = this.config.get<{ url: string; folder: string }>('attachment');
-      const fileUrl = `${url}/${folder}/${QR_DIR}/${encodeURIComponent(fileName)}`;
-
-      // File sudah di FTP; gagal mencatat ke tabel tidak menggagalkan QR, hanya dicatat di log.
-      let saved = true;
-      try {
-        await this.save({
-          entity_cd: entityCd,
-          project_no: text(rows[0].project_no) || text(body?.project_no),
-          trx_type: trxType,
-          module,
-          doc_no: docNo,
-          level_no: Number(levelNo),
-          file_path: path,
-          file_url: fileUrl,
-        });
-      } catch (err: any) {
-        saved = false;
-        this.logger.transaction('QR_CODE', 'GAGAL', `simpan ${QR_TABLE} doc_no ${docNo} level ${levelNo}: ${err?.message ?? err}`, {
+      } else {
+        this.logger.transaction('QR_CODE', 'SUKSES', result.path, {
           ...context,
-          file_path: path,
+          approvers: result.approvers,
+          bytes: result.bytes,
+          table: result.saved ? QR_TABLE : 'gagal disimpan',
+          durationMs: Date.now() - started,
         });
+        message = `${QR_SUCCESS_PREFIX}${result.path}${result.saved ? '' : ` (gagal dicatat ke ${QR_TABLE})`}`;
       }
-
-      this.logger.transaction('QR_CODE', 'SUKSES', `${path}`, {
-        ...context,
-        approvers: rows.map((r) => text(r.user_id)),
-        bytes: png.length,
-        table: saved ? QR_TABLE : 'gagal disimpan',
-        durationMs: Date.now() - started,
-      });
-      return `${QR_SUCCESS_PREFIX}${path}${saved ? '' : ` (gagal dicatat ke ${QR_TABLE})`}`;
     } catch (err: any) {
-      const message = `QR code gagal dibuat: ${err?.message ?? err}`;
+      message = `QR code gagal dibuat: ${err?.message ?? err}`;
       this.logger.transaction('QR_CODE', 'GAGAL', `doc_no ${docNo} level ${levelNo}: ${err?.message ?? err}`, {
         ...context,
         durationMs: Date.now() - started,
       });
-      return message;
     }
+
+    // Level lain yang sudah di-approve tapi QR-nya belum tercatat (mis. gagal saat approve sebelumnya)
+    // ikut dibuat sekarang. Gagal di sini tidak mengubah balasan untuk level yang diminta.
+    const filled = await this.fillMissing(doc, levelNo);
+    if (filled.length > 0 && message.startsWith(QR_SUCCESS_PREFIX)) {
+      message += ` (+ QR level ${filled.join(', ')} yang belum ada)`;
+    }
+    return message;
+  }
+
+  /**
+   * Buat QR satu level: ambil approver (status A) dari database, upload PNG ke FTP, catat di tabel.
+   * Mengembalikan null bila level tersebut belum di-approve.
+   */
+  private async createLevel(doc: DocKey, levelNo: string, userId: string | null): Promise<LevelResult | null> {
+    const rows = await this.db.query<ApprovedRow>(
+      `SELECT a.project_no, a.user_id, u.description AS user_name,
+              CONVERT(varchar(19), a.approved_date, 120) AS approved_text, e.entity_name
+       FROM mgr.po_authorized_person a WITH (NOLOCK)
+       LEFT JOIN mgr.security_users u WITH (NOLOCK) ON u.name = a.user_id
+       LEFT JOIN mgr.cf_entity e WITH (NOLOCK) ON e.entity_cd = a.entity_cd
+       WHERE a.entity_cd = ? AND a.doc_no = ? AND a.level_no = ? AND a.trx_type = ?
+         AND a.module = ? AND a.type = ? AND a.status = 'A'
+         AND (? IS NULL OR a.user_id = ?)
+       ORDER BY a.approved_date`,
+      [doc.entityCd, doc.docNo, levelNo, doc.trxType, doc.module, APPR_TYPE, userId, userId],
+    );
+    if (rows.length === 0) return null;
+
+    const content = qrContent(doc.entityCd, doc.docNo, levelNo, rows);
+    const png = await QRCode.toBuffer(content, { type: 'png', errorCorrectionLevel: 'M', margin: 2, width: 300 });
+    const fileName = `${safeName(doc.entityCd)}_${safeName(doc.docNo)}_${safeName(levelNo)}.png`;
+    const path = await this.ftp.upload(QR_DIR, fileName, png);
+    const { url, folder } = this.config.get<{ url: string; folder: string }>('attachment');
+    const fileUrl = `${url}/${folder}/${QR_DIR}/${encodeURIComponent(fileName)}`;
+
+    // File sudah di FTP; gagal mencatat ke tabel tidak menggagalkan QR, hanya dicatat di log.
+    let saved = true;
+    try {
+      await this.save({
+        entity_cd: doc.entityCd,
+        project_no: text(rows[0].project_no) || doc.projectNo,
+        trx_type: doc.trxType,
+        module: doc.module,
+        doc_no: doc.docNo,
+        level_no: Number(levelNo),
+        file_path: path,
+        file_url: fileUrl,
+      });
+    } catch (err: any) {
+      saved = false;
+      this.logger.transaction(
+        'QR_CODE',
+        'GAGAL',
+        `simpan ${QR_TABLE} doc_no ${doc.docNo} level ${levelNo}: ${err?.message ?? err}`,
+        { entity_cd: doc.entityCd, doc_no: doc.docNo, level_no: levelNo, file_path: path },
+      );
+    }
+
+    return { path, saved, bytes: png.length, approvers: rows.map((r) => text(r.user_id)) };
+  }
+
+  /** Buat QR untuk level dokumen yang sudah A tetapi belum ada di tabel (selain level yang baru diminta). */
+  private async fillMissing(doc: DocKey, currentLevel: string): Promise<string[]> {
+    let levels: string[];
+    try {
+      const rows = await this.db.query<{ level_no: number }>(
+        `SELECT DISTINCT a.level_no
+         FROM mgr.po_authorized_person a WITH (NOLOCK)
+         WHERE a.entity_cd = ? AND a.doc_no = ? AND a.trx_type = ? AND a.module = ?
+           AND a.type = ? AND a.status = 'A' AND a.level_no <> ?
+           AND NOT EXISTS (
+             SELECT 1 FROM ${QR_TABLE} q WITH (NOLOCK)
+             WHERE q.entity_cd = a.entity_cd AND q.doc_no = a.doc_no AND q.trx_type = a.trx_type
+               AND q.module = a.module AND q.level_no = a.level_no)
+         ORDER BY a.level_no`,
+        [doc.entityCd, doc.docNo, doc.trxType, doc.module, APPR_TYPE, currentLevel],
+      );
+      levels = rows.map((r) => text(r.level_no));
+    } catch (err: any) {
+      this.logger.transaction('QR_CODE', 'GAGAL', `cek level tanpa QR doc_no ${doc.docNo}: ${err?.message ?? err}`, {
+        entity_cd: doc.entityCd,
+        doc_no: doc.docNo,
+      });
+      return [];
+    }
+
+    const done: string[] = [];
+    for (const level of levels) {
+      const context = { entity_cd: doc.entityCd, doc_no: doc.docNo, level_no: level, susulan: true };
+      try {
+        const result = await this.createLevel(doc, level, null);
+        if (!result) continue;
+        done.push(level);
+        this.logger.transaction('QR_CODE', 'SUKSES', `${result.path} (susulan)`, {
+          ...context,
+          approvers: result.approvers,
+          table: result.saved ? QR_TABLE : 'gagal disimpan',
+        });
+      } catch (err: any) {
+        this.logger.transaction('QR_CODE', 'GAGAL', `susulan doc_no ${doc.docNo} level ${level}: ${err?.message ?? err}`, context);
+      }
+    }
+    return done;
   }
 
   /** Satu baris per dokumen per level: perbarui bila sudah ada, tambah bila belum. */
@@ -147,6 +213,22 @@ export class QrCodeService implements OnModuleInit {
       [row.file_path, row.file_url, ...key, ...key, row.file_path, row.file_url],
     );
   }
+}
+
+interface DocKey {
+  entityCd: string;
+  docNo: string;
+  trxType: string;
+  module: string;
+  /** project_no dari body; dipakai bila kosong di po_authorized_person. */
+  projectNo: string;
+}
+
+interface LevelResult {
+  path: string;
+  saved: boolean;
+  bytes: number;
+  approvers: string[];
 }
 
 interface QrRecord {
